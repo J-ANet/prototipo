@@ -36,9 +36,17 @@ def build_success_report(
     result: dict[str, Any], metrics: dict[str, Any], validation_report: ValidationReport
 ) -> dict[str, Any]:
     """Return a JSON-serializable success report."""
+    plan_output = {
+        "plan_summary": result.get("plan_summary", {}),
+        "daily_plan": result.get("daily_plan", []),
+        "metrics": metrics,
+        "warnings": result.get("warnings", []),
+        "suggestions": result.get("suggestions", []),
+        "validation_report": validation_report.as_dict(),
+    }
     return {
         "status": "ok",
         "result": result,
         "metrics": metrics,
-        "plan_output": {"validation_report": validation_report.as_dict()},
+        "plan_output": plan_output,
     }
