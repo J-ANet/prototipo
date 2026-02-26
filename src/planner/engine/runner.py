@@ -148,6 +148,12 @@ def run_planner(payload: dict[str, Any]) -> dict[str, Any]:
         subjects=subjects,
         workload_by_subject=workload_by_subject,
         session_minutes=int(global_config.get("session_duration_minutes", 30)),
+        distribution_config={
+            "human_distribution_mode": global_config.get("human_distribution_mode", "off"),
+            "max_same_subject_streak_days": global_config.get("max_same_subject_streak_days", 3),
+            "target_daily_subject_variety": global_config.get("target_daily_subject_variety", 2),
+        },
+        config_by_subject=payload.get("effective_config", {}).get("by_subject", {}),
         decision_trace=decision_trace,
     )
 
