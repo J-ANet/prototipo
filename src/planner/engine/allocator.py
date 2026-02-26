@@ -15,7 +15,12 @@ from typing import Any
 
 from planner.reporting.decision_trace import DecisionTraceCollector
 
-from .scoring import compute_score, deterministic_tie_breaker_key
+from .scoring import (
+    DEFAULT_CONTINUITY_CONFIG,
+    compute_recent_continuity_penalty,
+    compute_score,
+    deterministic_tie_breaker_key,
+)
 
 
 def _to_date(value: str | date) -> date:
@@ -59,6 +64,7 @@ def allocate_plan(
     workload_by_subject: dict[str, dict[str, Any]],
     session_minutes: int = 30,
     score_features_by_subject: dict[str, dict[str, float]] | None = None,
+    continuity_config: dict[str, float | int | bool] | None = None,
     decision_trace: DecisionTraceCollector | None = None,
 ) -> dict[str, Any]:
     """Allocate minutes with deterministic iteration and tie-breaks."""
@@ -82,6 +88,19 @@ def allocate_plan(
 
     allocations: list[dict[str, Any]] = []
     slack_by_slot: dict[str, int] = {}
+    history_minutes_by_day: dict[date, dict[str, int]] = {}
+    history_total_minutes_by_day: dict[date, int] = {}
+    effective_continuity = (
+        DEFAULT_CONTINUITY_CONFIG if continuity_config is None else {**DEFAULT_CONTINUITY_CONFIG, **continuity_config}
+    )
+
+    def _register_history(day_value: str | date, sid: str, minutes: int) -> None:
+        if sid == "__slack__" or minutes <= 0:
+            return
+        day = _to_date(day_value)
+        day_history = history_minutes_by_day.setdefault(day, {})
+        day_history[sid] = day_history.get(sid, 0) + minutes
+        history_total_minutes_by_day[day] = history_total_minutes_by_day.get(day, 0) + minutes
 
     # Phase 1: forward assignment with score + deterministic tie-break.
     for slot in ordered_slots:
@@ -95,7 +114,14 @@ def allocate_plan(
                 if remaining_base[sid] <= 0:
                     continue
                 features = (score_features_by_subject or {}).get(sid, {})
-                score = compute_score(features)
+                continuity_penalty = compute_recent_continuity_penalty(
+                    subject_id=sid,
+                    reference_day=slot["date"],
+                    minutes_by_day=history_minutes_by_day,
+                    total_minutes_by_day=history_total_minutes_by_day,
+                    config=effective_continuity,
+                )
+                score = compute_score({**features, "streak_penalty": continuity_penalty})
                 tie = deterministic_tie_breaker_key(subject, reference_day=slot["date"])
                 candidates.append((score, tie, subject))
 
@@ -120,6 +146,7 @@ def allocate_plan(
                 )
             remaining_base[sid] -= chunk
             available -= chunk
+            _register_history(slot["date"], sid, chunk)
 
         slack_by_slot[slot["slot_id"]] = available
 
@@ -160,6 +187,7 @@ def allocate_plan(
                 )
             remaining_buffer[sid] -= chunk
             free_minutes -= chunk
+            _register_history(slot["date"], sid, chunk)
 
         slack_by_slot[slot["slot_id"]] = free_minutes
 
@@ -190,6 +218,7 @@ def allocate_plan(
                 )
             remaining_buffer[sid] -= chunk
             free_minutes -= chunk
+            _register_history(slot["date"], sid, chunk)
 
         if free_minutes > 0:
             _alloc_chunk(subject_id="__slack__", slot=slot, minutes=free_minutes, bucket="slack", out=allocations)
