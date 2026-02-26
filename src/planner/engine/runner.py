@@ -1,23 +1,165 @@
-"""Minimal planner engine stub."""
+"""Planning engine runner."""
 
 from __future__ import annotations
 
+from datetime import date
 from typing import Any
+
+from .allocator import allocate_plan
+from .replan import (
+    apply_locked_constraints_to_slots,
+    build_critical_warnings,
+    compute_manual_progress,
+    compute_reallocation_metrics,
+    extract_locked_manual_allocations,
+    read_replan_window,
+    split_previous_plan,
+)
+from .slot_builder import build_daily_slots
+from .workload import compute_subject_workload
+
+
+_DEF_START = date(2026, 1, 1)
+_DEF_END = date(2026, 1, 7)
+
+
+def _parse_date(raw: Any, fallback: date) -> date:
+    if isinstance(raw, str):
+        try:
+            return date.fromisoformat(raw)
+        except ValueError:
+            return fallback
+    return fallback
+
+
+def _extract_subjects(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    root = payload.get("subjects", {})
+    if isinstance(root, dict):
+        items = root.get("subjects", [])
+        if isinstance(items, list):
+            return [item for item in items if isinstance(item, dict)]
+    return []
+
+
+def _extract_calendar_constraints(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    root = payload.get("calendar_constraints", {})
+    if isinstance(root, dict):
+        items = root.get("constraints", [])
+        if isinstance(items, list):
+            return [item for item in items if isinstance(item, dict)]
+    return []
+
+
+def _extract_manual_sessions(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    root = payload.get("manual_sessions", {})
+    if isinstance(root, dict):
+        items = root.get("manual_sessions", [])
+        if isinstance(items, list):
+            return [item for item in items if isinstance(item, dict)]
+    return []
+
+
+def _extract_previous_allocations(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    prev = payload.get("previous_plan", {})
+    if isinstance(prev, dict):
+        plan = prev.get("plan")
+        if isinstance(plan, list):
+            return [item for item in plan if isinstance(item, dict)]
+    return []
+
+
+def _derive_horizon(subjects: list[dict[str, Any]]) -> tuple[date, date]:
+    starts: list[date] = []
+    ends: list[date] = []
+    for subject in subjects:
+        starts.append(_parse_date(subject.get("start_at"), _DEF_START))
+        candidates = [
+            _parse_date(subject.get("end_by"), _DEF_END),
+            _parse_date(subject.get("selected_exam_date"), _DEF_END),
+        ]
+        exam_dates = subject.get("exam_dates", [])
+        if isinstance(exam_dates, list):
+            candidates.extend(_parse_date(raw, _DEF_END) for raw in exam_dates)
+        ends.append(max(candidates))
+
+    if not starts or not ends:
+        return _DEF_START, _DEF_END
+    return min(starts), max(ends)
 
 
 def run_planner(payload: dict[str, Any]) -> dict[str, Any]:
-    """Run the planning engine.
+    """Run planner with replan constraints and manual-session integration."""
+    global_config = payload.get("effective_config", {}).get("global", payload.get("global_config", {}))
+    subjects = _extract_subjects(payload)
+    manual_sessions = _extract_manual_sessions(payload)
+    constraints = _extract_calendar_constraints(payload)
+    previous_allocations = _extract_previous_allocations(payload)
 
-    For now this returns a deterministic minimal output that includes loaded inputs.
-    """
+    horizon_start, horizon_end = _derive_horizon(subjects)
+    window = read_replan_window(payload)
+
+    slots = build_daily_slots(
+        start_date=horizon_start,
+        end_date=horizon_end,
+        global_config=global_config,
+        calendar_constraints=constraints,
+    )
+
+    manual_progress = compute_manual_progress(manual_sessions)
+
+    workload_by_subject: dict[str, dict[str, Any]] = {}
+    remaining_minutes: dict[str, int] = {}
+    effective_done_minutes: dict[str, int] = {}
+    for subject in subjects:
+        sid = str(subject.get("subject_id", ""))
+        workload = compute_subject_workload(
+            subject,
+            subject_buffer_percent=float(global_config.get("subject_buffer_percent", 0.10)),
+        )
+        done = int(manual_progress.get(sid, {}).get("effective_done_minutes", 0))
+        base_minutes = max(0, int(round(float(workload.get("hours_base", 0.0)) * 60)))
+        adjusted_base_minutes = max(0, base_minutes - done)
+        workload["hours_base"] = adjusted_base_minutes / 60.0
+
+        effective_done_minutes[sid] = done
+        remaining_minutes[sid] = adjusted_base_minutes
+        workload_by_subject[sid] = workload
+
+    preserved_previous, previous_horizon = split_previous_plan(previous_allocations, window.from_date)
+
+    locked_allocations = extract_locked_manual_allocations(manual_sessions, window.from_date)
+
+    slots_in_window = []
+    for slot in slots:
+        if window.from_date is None:
+            slots_in_window.append(slot)
+            continue
+        slot_day = _parse_date(slot.get("date"), _DEF_END)
+        if slot_day >= window.from_date:
+            slots_in_window.append(slot)
+
+    constrained_slots = apply_locked_constraints_to_slots(slots_in_window, locked_allocations)
+
+    allocation_result = allocate_plan(
+        slots=constrained_slots,
+        subjects=subjects,
+        workload_by_subject=workload_by_subject,
+        session_minutes=int(global_config.get("session_duration_minutes", 30)),
+    )
+
+    new_horizon = allocation_result["allocations"]
+    metrics = compute_reallocation_metrics(previous_horizon, new_horizon)
+    warnings = build_critical_warnings(manual_sessions=manual_sessions, slots_in_window=constrained_slots)
+
+    final_plan = [*preserved_previous, *locked_allocations, *new_horizon]
+
     return {
         "status": "ok",
-        "plan": [],
-        "inputs_loaded": {
-            "global_config": payload["global_config"],
-            "subjects": payload["subjects"],
-            "calendar_constraints": payload["calendar_constraints"],
-            "manual_sessions": payload["manual_sessions"],
-        },
+        "plan": final_plan,
+        "warnings": warnings,
+        "effective_done_minutes": effective_done_minutes,
+        "remaining_minutes": remaining_minutes,
+        "reallocated_ratio": metrics["reallocated_ratio"],
+        "stability_score": metrics["stability_score"],
         "effective_config": payload.get("effective_config", {}),
     }
