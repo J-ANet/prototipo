@@ -1,0 +1,76 @@
+{
+  "schema_version": "1.0.0",
+  "plan_id": "plan-2026-05-01-001",
+  "generated_at": "2026-05-01T09:00:00Z",
+  "plan_summary": {
+    "horizon_start": "2026-05-02",
+    "horizon_end": "2026-06-20",
+    "subjects_count": 2,
+    "confidence_level": "medium",
+    "confidence_score": 0.68
+  },
+  "daily_plan": [
+    {
+      "date": "2026-05-02",
+      "sessions": [
+        {"session_id": "s1", "subject_id": "alg1", "planned_minutes": 90, "status": "planned"},
+        {"session_id": "s2", "subject_id": "fis1", "planned_minutes": 60, "status": "planned"}
+      ],
+      "capacity_used_minutes": 180,
+      "capacity_limit_minutes": 210
+    }
+  ],
+  "metrics": {
+    "coverage_score": 0.72,
+    "risk_exam_score": 0.61,
+    "feasibility": 0.94,
+    "stability_score": 0.77,
+    "saturation_score": 0.63,
+    "confidence_score": 0.68
+  },
+  "warnings": [
+    {
+      "code": "BUFFER_NOT_ALLOCABLE",
+      "subject_id": "fis1",
+      "message": "Studio base completabile ma buffer non allocabile nell'orizzonte corrente"
+    }
+  ],
+  "suggestions": [
+    {
+      "code": "INCREASE_DAILY_CAP",
+      "message": "Valuta aumento cap giornaliero di 15 minuti nei giorni feriali",
+      "tradeoff": "Aumento carico percepito"
+    }
+  ],
+  "decision_trace": [
+    {
+      "decision_id": "d-001",
+      "timestamp": "2026-05-01T09:00:02Z",
+      "slot_id": "2026-05-02#1",
+      "candidate_subjects": ["alg1", "fis1"],
+      "scores_by_subject": {"alg1": 0.81, "fis1": 0.75},
+      "selected_subject_id": "alg1",
+      "applied_rules": ["RULE_EXAM_URGENCY", "RULE_COMPLETION_GAP"],
+      "blocked_constraints": [],
+      "tradeoff_note": "preferita urgenza esame più vicina",
+      "confidence_impact": 0.01
+    }
+  ],
+  "effective_config": {
+    "daily_cap_minutes": 180,
+    "daily_cap_tolerance_minutes": 30,
+    "default_strategy_mode": "hybrid",
+    "stability_vs_recovery": 0.4
+  },
+  "validation_report": {
+    "errors": [],
+    "infos": [
+      {
+        "field_path": "subjects[1].attendance_hours_per_cfu",
+        "info_code": "INFO_DEFAULT_ATTENDANCE_HOURS_PER_CFU_APPLIED",
+        "message": "Default attendance_hours_per_cfu applied",
+        "applied_value": 6
+      }
+    ]
+  }
+}

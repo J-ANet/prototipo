@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://planner-cli.local/schema/manual_sessions.schema.json",
+  "title": "ManualSessions",
+  "type": "object",
+  "required": ["schema_version", "manual_sessions"],
+  "properties": {
+    "schema_version": {"type": "string"},
+    "manual_sessions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["subject_id", "date", "planned_minutes", "status", "locked_by_user"],
+        "properties": {
+          "session_id": {"type": "string"},
+          "subject_id": {"type": "string"},
+          "date": {"type": "string", "format": "date"},
+          "planned_minutes": {"type": "integer", "minimum": 1},
+          "actual_minutes_done": {"type": "integer", "minimum": 0},
+          "status": {"type": "string", "enum": ["planned", "done", "skipped", "partial"]},
+          "locked_by_user": {"type": "boolean", "default": true},
+          "notes": {"type": "string"}
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

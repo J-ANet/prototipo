@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://planner-cli.local/schema/global_config.schema.json",
+  "title": "GlobalConfig",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "daily_cap_minutes",
+    "daily_cap_tolerance_minutes",
+    "subject_buffer_percent",
+    "critical_but_possible_threshold",
+    "study_on_exam_day",
+    "max_subjects_per_day",
+    "session_duration_minutes",
+    "sleep_hours_per_day",
+    "pomodoro_enabled",
+    "pomodoro_work_minutes",
+    "pomodoro_short_break_minutes",
+    "pomodoro_long_break_minutes",
+    "pomodoro_long_break_every",
+    "pomodoro_count_breaks_in_capacity",
+    "stability_vs_recovery",
+    "default_strategy_mode"
+  ],
+  "properties": {
+    "schema_version": {"type": "string"},
+    "daily_cap_minutes": {"type": "integer", "minimum": 30, "multipleOf": 15, "default": 180},
+    "daily_cap_tolerance_minutes": {"type": "integer", "minimum": 0, "default": 30},
+    "subject_buffer_percent": {"type": "number", "minimum": 0, "maximum": 1, "default": 0.1},
+    "critical_but_possible_threshold": {"type": "number", "minimum": 0, "maximum": 1, "default": 0.8},
+    "study_on_exam_day": {"type": "boolean", "default": false},
+    "max_subjects_per_day": {"type": "integer", "minimum": 1, "default": 3},
+    "session_duration_minutes": {"type": "integer", "minimum": 30, "multipleOf": 15, "default": 30},
+    "sleep_hours_per_day": {"type": "number", "minimum": 0, "maximum": 16, "default": 8},
+    "sleep_overrides_by_weekday": {"type": "object", "additionalProperties": {"type": "number", "minimum": 0, "maximum": 16}},
+    "sleep_overrides_by_date": {"type": "object", "additionalProperties": {"type": "number", "minimum": 0, "maximum": 16}},
+    "pomodoro_enabled": {"type": "boolean", "default": true},
+    "pomodoro_work_minutes": {"type": "integer", "minimum": 15, "default": 25},
+    "pomodoro_short_break_minutes": {"type": "integer", "minimum": 0, "default": 5},
+    "pomodoro_long_break_minutes": {"type": "integer", "minimum": 0, "default": 15},
+    "pomodoro_long_break_every": {"type": "integer", "minimum": 2, "default": 4},
+    "pomodoro_count_breaks_in_capacity": {"type": "boolean", "default": true},
+    "stability_vs_recovery": {"type": "number", "minimum": 0, "maximum": 1, "default": 0.4},
+    "default_strategy_mode": {"type": "string", "enum": ["forward", "backward", "hybrid"], "default": "hybrid"}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"daily_cap_minutes": {"type": "integer"}, "session_duration_minutes": {"type": "integer"}}},
+      "then": {"properties": {"daily_cap_minutes": {"minimum": {"$data": "1/session_duration_minutes"}}}}
+    }
+  ],
+  "additionalProperties": false
+}
