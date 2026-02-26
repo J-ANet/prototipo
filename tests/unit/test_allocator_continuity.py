@@ -121,3 +121,31 @@ def test_allocator_strict_distribution_caps_streak_days() -> None:
 
     subjects_strict = [item["subject_id"] for item in strict["allocations"] if item["bucket"] == "base"]
     assert subjects_strict[:3] == ["math", "physics", "math"]
+
+
+def test_allocator_records_tradeoff_note_when_consecutive_limit_has_no_alternative() -> None:
+    from datetime import datetime, timezone
+
+    from planner.reporting.decision_trace import DecisionTraceCollector
+
+    slots = [{"slot_id": "d1", "date": "2026-01-01", "max_minutes": 90}]
+    subjects = [{"subject_id": "math", "priority": 1, "exam_dates": ["2026-03-01"]}]
+    workload = {"math": {"hours_base": 2.0, "hours_buffer": 0.0}}
+    trace = DecisionTraceCollector(start_timestamp=datetime.now(timezone.utc))
+
+    allocate_plan(
+        slots=slots,
+        subjects=subjects,
+        workload_by_subject=workload,
+        session_minutes=30,
+        distribution_config={
+            "human_distribution_mode": "strict",
+            "max_same_subject_streak_days": 3,
+            "max_same_subject_consecutive_blocks": 1,
+            "target_daily_subject_variety": 2,
+        },
+        decision_trace=trace,
+    )
+
+    notes = [item["tradeoff_note"] for item in trace.as_list()]
+    assert any("Eccezione limite blocchi consecutivi" in note for note in notes)

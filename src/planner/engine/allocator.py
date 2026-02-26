@@ -65,17 +65,20 @@ def _distribution_limits_for_mode(mode: str) -> dict[str, Any]:
         return {
             "penalty_multiplier": 2.0,
             "default_max_streak": 2,
+            "default_max_same_day_blocks": 2,
             "min_variety": 3,
         }
     if mode == "balanced":
         return {
             "penalty_multiplier": 1.0,
             "default_max_streak": 3,
+            "default_max_same_day_blocks": 3,
             "min_variety": 2,
         }
     return {
         "penalty_multiplier": 0.0,
         "default_max_streak": 10**6,
+        "default_max_same_day_blocks": 10**6,
         "min_variety": 1,
     }
 
@@ -91,11 +94,15 @@ def _resolve_subject_distribution(
         mode = "off"
     limits = _distribution_limits_for_mode(mode)
     max_streak = int(merged.get("max_same_subject_streak_days", limits["default_max_streak"]))
+    max_same_day_blocks = int(
+        merged.get("max_same_subject_consecutive_blocks", limits["default_max_same_day_blocks"])
+    )
     target_variety = int(merged.get("target_daily_subject_variety", limits["min_variety"]))
     return {
         "mode": mode,
         "penalty_multiplier": float(limits["penalty_multiplier"]),
         "max_streak_days": max(1, max_streak),
+        "max_same_day_blocks": max(1, max_same_day_blocks),
         "target_daily_subject_variety": max(1, target_variety),
     }
 
@@ -160,6 +167,8 @@ def allocate_plan(
         for subject in ordered_subjects
     }
     day_subject_set: dict[date, set[str]] = defaultdict(set)
+    day_last_subject: dict[date, str] = {}
+    day_consecutive_blocks: dict[date, int] = defaultdict(int)
 
     def _register_history(day_value: str | date, sid: str, minutes: int) -> None:
         if sid == "__slack__" or minutes <= 0:
@@ -169,6 +178,20 @@ def allocate_plan(
         day_history[sid] = day_history.get(sid, 0) + minutes
         day_subject_set[day].add(sid)
         history_total_minutes_by_day[day] = history_total_minutes_by_day.get(day, 0) + minutes
+        if day_last_subject.get(day) == sid:
+            day_consecutive_blocks[day] += 1
+        else:
+            day_last_subject[day] = sid
+            day_consecutive_blocks[day] = 1
+
+    def _is_same_day_block_limit_exceeded(sid: str, day: date) -> bool:
+        dist_cfg = per_subject_distribution.get(sid, _distribution_limits_for_mode("off"))
+        if str(dist_cfg.get("mode", "off")) == "off":
+            return False
+        if day_last_subject.get(day) != sid:
+            return False
+        next_streak = day_consecutive_blocks.get(day, 0) + 1
+        return next_streak > int(dist_cfg.get("max_same_day_blocks", 10**6))
 
     # Phase 1: forward assignment with score + deterministic tie-break.
     for slot in ordered_slots:
@@ -212,18 +235,40 @@ def allocate_plan(
 
             candidates.sort(key=lambda item: (-item[0], item[1]))
             chosen = candidates[0][2]
+            day = _to_date(slot["date"])
+            forced_second_choice = False
+            tradeoff_note = "Selezione con punteggio massimo e tie-break deterministico."
+
+            if _is_same_day_block_limit_exceeded(str(chosen["subject_id"]), day):
+                for idx, candidate in enumerate(candidates[1:], start=1):
+                    candidate_subject = candidate[2]
+                    if not _is_same_day_block_limit_exceeded(str(candidate_subject["subject_id"]), day):
+                        chosen = candidate_subject
+                        forced_second_choice = True
+                        tradeoff_note = (
+                            "Limite blocchi consecutivi stessa materia superato: applicata seconda scelta valida."
+                        )
+                        break
+                else:
+                    tradeoff_note = (
+                        "Eccezione limite blocchi consecutivi: nessuna alternativa valida senza violare hard constraints."
+                    )
+
             sid = str(chosen["subject_id"])
             chunk = min(session_minutes, available, remaining_base[sid])
             _alloc_chunk(subject_id=sid, slot=slot, minutes=chunk, bucket="base", out=allocations)
             if decision_trace is not None:
+                applied_rules = ["RULE_BASE_BEFORE_BUFFER", "RULE_SCORE_ORDER", "RULE_TIE_BREAK_DETERMINISTIC"]
+                if forced_second_choice:
+                    applied_rules.append("RULE_LIMIT_CONSECUTIVE_BLOCKS")
                 decision_trace.record(
                     slot_id=str(slot["slot_id"]),
                     candidate_subjects=[str(item[2]["subject_id"]) for item in candidates],
                     scores_by_subject={str(item[2]["subject_id"]): float(item[0]) for item in candidates},
                     selected_subject_id=sid,
-                    applied_rules=["RULE_BASE_BEFORE_BUFFER", "RULE_SCORE_ORDER", "RULE_TIE_BREAK_DETERMINISTIC"],
+                    applied_rules=applied_rules,
                     blocked_constraints=[],
-                    tradeoff_note="Selezione con punteggio massimo e tie-break deterministico.",
+                    tradeoff_note=tradeoff_note,
                     confidence_impact=0.01,
                 )
             remaining_base[sid] -= chunk
