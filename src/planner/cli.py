@@ -10,8 +10,18 @@ from planner.engine import run_planner
 from planner.io import read_json, write_json
 from planner.metrics import collect_metrics
 from planner.normalization import normalize_request
-from planner.reporting import build_error_report, build_success_report
-from planner.validation import ValidationError, validate_plan_request
+from planner.reporting import (
+    build_error_report,
+    build_error_report_with_validation,
+    build_success_report,
+)
+from planner.validation import (
+    ValidationError,
+    ValidationReport,
+    validate_domain_inputs,
+    validate_inputs_with_schema,
+    validate_plan_request,
+)
 
 
 def _resolve_input_path(request_file: Path, value: str) -> Path:
@@ -57,6 +67,8 @@ def _load_referenced_inputs(request_file: Path, request: dict[str, Any]) -> tupl
 
 
 def run_plan_command(request_path: str, output_path: str) -> int:
+    validation_report = ValidationReport()
+
     try:
         request_payload = read_json(request_path)
     except Exception as exc:  # noqa: BLE001
@@ -76,12 +88,45 @@ def run_plan_command(request_path: str, output_path: str) -> int:
 
     loaded_request, load_errors = _load_referenced_inputs(Path(request_path), request_payload)
     if load_errors:
-        write_json(output_path, build_error_report(load_errors, code="input_load_error"))
+        write_json(
+            output_path,
+            build_error_report_with_validation(
+                load_errors,
+                validation_report=validation_report,
+                code="input_load_error",
+            ),
+        )
+        return 2
+
+    loaded_request["plan_request"] = request_payload
+
+    domain_report = validate_domain_inputs(loaded_request)
+    schema_report = validate_inputs_with_schema(loaded_request)
+    validation_report.extend(domain_report)
+    validation_report.extend(schema_report)
+
+    if validation_report.errors:
+        errors = [
+            ValidationError(
+                code=issue.code,
+                message=issue.message,
+                path=issue.field_path,
+            )
+            for issue in validation_report.errors
+        ]
+        write_json(
+            output_path,
+            build_error_report_with_validation(
+                errors,
+                validation_report=validation_report,
+                code="validation_error",
+            ),
+        )
         return 2
 
     result = run_planner(loaded_request)
     metrics = collect_metrics(result)
-    write_json(output_path, build_success_report(result, metrics))
+    write_json(output_path, build_success_report(result, metrics, validation_report))
     return 0
 
 
