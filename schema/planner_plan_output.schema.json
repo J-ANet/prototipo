@@ -17,22 +17,126 @@
     "validation_report"
   ],
   "properties": {
-    "schema_version": {"type": "string"},
-    "plan_id": {"type": "string"},
-    "generated_at": {"type": "string", "format": "date-time"},
-    "plan_summary": {"type": "object"},
-    "daily_plan": {"type": "array"},
-    "metrics": {"type": "object"},
-    "warnings": {"type": "array", "items": {"type": "object"}},
-    "suggestions": {"type": "array", "items": {"type": "object"}},
-    "decision_trace": {"type": "array", "items": {"type": "object"}},
-    "effective_config": {"type": "object"},
+    "schema_version": {
+      "type": "string"
+    },
+    "plan_id": {
+      "type": "string"
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "plan_summary": {
+      "type": "object"
+    },
+    "daily_plan": {
+      "type": "array"
+    },
+    "metrics": {
+      "type": "object"
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "suggestions": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "decision_trace": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "decision_id",
+          "timestamp",
+          "slot_id",
+          "candidate_subjects",
+          "scores_by_subject",
+          "selected_subject_id",
+          "applied_rules",
+          "blocked_constraints",
+          "tradeoff_note",
+          "confidence_impact"
+        ],
+        "properties": {
+          "decision_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "slot_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "candidate_subjects": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "scores_by_subject": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "number"
+            }
+          },
+          "selected_subject_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "applied_rules": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "blocked_constraints": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "tradeoff_note": {
+            "type": "string"
+          },
+          "confidence_impact": {
+            "type": "number"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "effective_config": {
+      "type": "object"
+    },
     "validation_report": {
       "type": "object",
-      "required": ["errors", "infos"],
+      "required": [
+        "errors",
+        "infos"
+      ],
       "properties": {
-        "errors": {"type": "array", "items": {"type": "object"}},
-        "infos": {"type": "array", "items": {"type": "object"}}
+        "errors": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "infos": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        }
       },
       "additionalProperties": false
     }

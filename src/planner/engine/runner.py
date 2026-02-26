@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime, timezone
 from typing import Any
 
 from .allocator import allocate_plan
@@ -15,6 +15,7 @@ from .replan import (
     read_replan_window,
     split_previous_plan,
 )
+from planner.reporting.decision_trace import DecisionTraceCollector
 from planner.reporting.warnings import build_warnings_and_suggestions
 from .slot_builder import build_daily_slots
 from .workload import compute_subject_workload
@@ -141,11 +142,13 @@ def run_planner(payload: dict[str, Any]) -> dict[str, Any]:
 
     constrained_slots = apply_locked_constraints_to_slots(slots_in_window, locked_allocations)
 
+    decision_trace = DecisionTraceCollector(start_timestamp=datetime.now(timezone.utc))
     allocation_result = allocate_plan(
         slots=constrained_slots,
         subjects=subjects,
         workload_by_subject=workload_by_subject,
         session_minutes=int(global_config.get("session_duration_minutes", 30)),
+        decision_trace=decision_trace,
     )
 
     new_horizon = allocation_result["allocations"]
@@ -196,4 +199,5 @@ def run_planner(payload: dict[str, Any]) -> dict[str, Any]:
         "remaining_base_minutes": allocation_result["remaining_base_minutes"],
         "remaining_buffer_minutes": allocation_result["remaining_buffer_minutes"],
         "workload_by_subject": workload_by_subject,
+        "decision_trace": decision_trace.as_list(),
     }
