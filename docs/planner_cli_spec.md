@@ -1,35 +1,37 @@
-# Decisioni di prodotto – Planner adattivo studio universitario (CLI)
+# Specifica unica e vincolante — Planner adattivo studio universitario (CLI)
 
-Documento consolidato e revisionato delle decisioni funzionali, dei vincoli e del contratto dati per il prototipo CLI.
+Questa è l'unica specifica normativa del progetto.
+Tutti i requisiti qui definiti sono obbligatori: non esistono feature opzionali, non esistono scope ridotti, non esistono elementi di sola rifinitura.
 
 ## 1) Obiettivo del prodotto
 - Ridurre indecisione quotidiana su cosa studiare.
 - Migliorare regolarità e organizzazione fino agli esami.
 - Gestire imprevisti con ripianificazione affidabile.
-- Generare piani matematicamente corretti ma anche “umani”.
+- Generare piani matematicamente corretti e comprensibili.
 
-## 2) Scope MVP
-- Solo CLI.
-- Focus su motore di pianificazione/ricalcolo e validatore input.
-- Input/output JSON.
-- Validazione con smoke scenario-based.
+## 2) Scope del prodotto (completo)
+- Interfaccia CLI.
+- Motore di pianificazione e ricalcolo deterministico.
+- Validatore input no-fail-fast con report completo.
+- Input/output JSON con schema versionato.
+- Test unitari, integrazione e smoke basati su invarianti.
 
-## 3) Struttura file input consigliata
+## 3) Struttura file input
 - `plan_request.json`: metadati richiesta + riferimenti ai file input.
 - `global_config.json`: configurazione globale planner.
 - `subjects.json`: materie e override per materia.
 - `calendar_constraints.json`: vincoli esterni e indisponibilità.
 - `manual_sessions.json`: sessioni utente (pianificate/svolte) per ricalcolo.
 
-## 4) Default globali concordati
+## 4) Default globali
 - `daily_cap_minutes`: 180.
-- `daily_cap_tolerance_minutes`: 30 (usata per non scartare una sessione quando manca poco spazio, senza superare `cap+tolleranza`).
+- `daily_cap_tolerance_minutes`: 30.
 - `subject_buffer_percent`: 0.10.
 - `critical_but_possible_threshold`: 0.80.
 - `study_on_exam_day`: false.
 - `max_subjects_per_day`: 3.
 - `sleep_hours_per_day`: 8.
-- `session_duration_minutes` (macro-sessione): 30.
+- `session_duration_minutes`: 30.
 - `pomodoro_enabled`: true.
 - `pomodoro_count_breaks_in_capacity`: true.
 - `default_strategy_mode`: `hybrid`.
@@ -37,10 +39,10 @@ Documento consolidato e revisionato delle decisioni funzionali, dei vincoli e de
 
 ### Significato di `stability_vs_recovery`
 Parametro in [0,1] che regola il compromesso nei ricalcoli:
-- `0.0`: recupero aggressivo (molti cambi accettati).
-- `1.0`: stabilità massima (pochi cambi).
+- `0.0`: recupero aggressivo.
+- `1.0`: stabilità massima.
 
-## 5) Modello dati funzionale (alto livello)
+## 5) Modello dati funzionale
 
 ### Materie
 Campi chiave per materia:
@@ -53,7 +55,7 @@ Campi chiave per materia:
 ### Calendario e vincoli
 - Sessioni agnostiche all’orario.
 - Vincoli giornalieri/settimanali tramite file calendario.
-- Giorno esame di default non studiabile (configurabile).
+- Giorno esame non studiabile per default (configurabile).
 
 ### Sessioni manuali
 - Inseribili in anticipo e on-the-fly.
@@ -69,20 +71,19 @@ Campi chiave per materia:
 - Vincolo: macro-sessione minima 30 minuti.
 
 ## 7) Calcolo monte ore
-
 ### Formula base
 `hours_theoretical = cfu * 25`
 
 ### Correzione frequenza
 Se materia frequentata:
 - con calendario lezioni: sottrazione ore lezioni effettive;
-- senza calendario: stima `attendance_hours_per_cfu` (default 6, range consigliato 5–8).
+- senza calendario: stima `attendance_hours_per_cfu` (default 6, range 5–8).
 
 ### Ore base
 `hours_base = max(0, (hours_theoretical - attendance_discount_hours) * difficulty_coeff * prep_gap_coeff)`
 
 Dove:
-- `difficulty_coeff` default 1.0 (mapping consigliato: facile 0.90, medio 1.00, difficile 1.10).
+- `difficulty_coeff` default 1.0 (mapping: facile 0.90, medio 1.00, difficile 1.10).
 - `prep_gap_coeff = 1 + (1 - completion_initial)`.
 
 ### Buffer e target
@@ -97,7 +98,7 @@ Ordine sacrificio in stress:
 
 ## 8) Pomodoro e capacità giornaliera
 - Parametri pomodoro configurabili globalmente e overrideabili per materia.
-- `pomodoro_count_breaks_in_capacity=true` (default): pause incluse nel consumo capacità.
+- `pomodoro_count_breaks_in_capacity=true`: pause incluse nel consumo capacità.
 - `pomodoro_count_breaks_in_capacity=false`: capacità usa solo minuti studio.
 
 Formule:
@@ -160,7 +161,7 @@ Tie-breaker deterministico:
 
 ## 14) Obiettivi ottimizzazione
 - Primario: minimizzare rischio ritardo esami.
-- Secondario: distribuire meglio il carico su scelta utente.
+- Secondario: distribuire meglio il carico.
 
 ## 15) Warning obbligatori
 1. Sessioni manuali che comprimono capacità futura.
@@ -174,7 +175,7 @@ Tutte normalizzate in [0,1], dove 1 è migliore.
 
 - `coverage_subject = min(1, planned_base_minutes / required_base_minutes)`
 - `buffer_coverage_subject = min(1, planned_buffer_minutes / required_buffer_minutes)`
-- `feasibility = clamp(1 - over_capacity_minutes_total / max(1, planned_minutes_total))`
+- `feasibility = clamp(0,1, 1 - over_capacity_minutes_total / max(1, planned_minutes_total))`
 - `sat_day = used_capacity_minutes / (cap_minutes + tolerance_minutes)`
 - `weekly_saturation = weekly_used_capacity / max(1, weekly_capacity_limit)`
 - `saturation_score = 1 - min(1, avg(max(0, weekly_saturation - 1)))`
@@ -189,7 +190,7 @@ Tutte normalizzate in [0,1], dove 1 è migliore.
 - `recovery_score = 1 - min(1, recovery_days/14)`
 - `tolerance_dependency = tolerance_used_minutes / max(1, total_allocated_minutes)`
 - `tolerance_dependency_score = 1 - min(1, tolerance_dependency)`
-- `subject_concentration = max_subject_minutes_day / max(1, total_day_minutes)`
+- `subject_concentration = mean(max_subject_minutes_day / max(1,total_day_minutes))`
 - `concentration_score = 1 - min(1, subject_concentration)`
 - `reallocated_ratio = reallocated_minutes / max(1, previous_plan_minutes)`
 - `stability_score = 1 - min(1, reallocated_ratio)`
@@ -217,128 +218,8 @@ Tutte normalizzate in [0,1], dove 1 è migliore.
 - `14 < days_to_exam <= 30`: warning se `risk_exam >= 0.45`
 - `days_to_exam <= 14`: warning se `risk_exam >= 0.30`
 
-### Verifica matematica e correzioni operative
-Per evitare effetti distorsivi in implementazione, applicare queste correzioni:
-
-1. **Coverage con denominatore nullo**
-   - Se `required_base_minutes == 0`, definire `coverage_subject = 1`.
-   - Se `required_buffer_minutes == 0`, definire `buffer_coverage_subject = 1`.
-
-2. **Fattibilità non negativa**
-   - `feasibility = clamp(0,1, 1 - over_capacity_minutes_total / max(1, planned_minutes_total))`.
-
-3. **Saturazione con tolleranza inclusa**
-   - `weekly_capacity_limit = Σ(cap_day + tolerance_day)`.
-   - `weekly_saturation` può superare 1; la metrica usa la parte eccedente (`max(0, x-1)`).
-
-4. **Rischio esame con giorni negativi**
-   - usare `days_to_exam = max(1, (exam_date - reference_date).days)`.
-   - `reference_date` deve essere esplicito: data ricalcolo o data run.
-
-5. **Bilanciamento con giornate a zero studio**
-   - per evitare CV artificiale, calcolare `cv` sui soli giorni pianificabili del periodo.
-
-6. **Concentrazione materia più robusta**
-   - usare media dei picchi giornalieri: `subject_concentration = mean(max_subject_minutes_day / max(1,total_day_minutes))`.
-
-7. **Stabilità ricalcolo comparabile**
-   - `reallocated_minutes` calcolato solo su orizzonte futuro comune tra piano precedente e nuovo.
-
-8. **Range finali metriche**
-   - tutte le metriche devono essere clippate in [0,1] prima della combinazione pesata.
-
-## 17) Pseudocodice fasi programma
-
-```text
-MAIN(plan_request_path):
-  req = load_json(plan_request_path)
-  files = resolve_paths(req)
-
-  raw_global = load_json(files.global_config_path)
-  raw_subjects = load_json(files.subjects_path)
-  raw_calendar = load_json(files.calendar_constraints_path)
-  raw_manual = load_json(files.manual_sessions_path)
-
-  validation = validate_all(raw_global, raw_subjects, raw_calendar, raw_manual)
-  if validation.errors not empty:
-    return build_validation_failure_output(validation)
-
-  normalized = normalize_inputs(req, raw_global, raw_subjects, raw_calendar, raw_manual)
-  # include defaults, overrides precedence, derived fields, generated IDs
-
-  workload = compute_workload_per_subject(normalized)
-  # cfu*25, attendance discount, coeffs, buffer, target
-
-  capacity = build_capacity_calendar(normalized)
-  # apply sleep precedence (date > weekday > default), caps, tolerance, exam-day policy
-
-  slots = build_slots(capacity, normalized)
-  # macro sessions + micro-session constraints (pomodoro/fixed)
-
-  base_plan = assign_sessions_deterministic(slots, workload, normalized)
-  # scoring, deterministic tie-breakers, max_subjects_per_day
-
-  refined_plan = pre_exam_refinement(base_plan, workload, normalized)
-  # preserve base before buffer, reduce lateness risk
-
-  final_plan = fill_gaps_with_buffer_then_slack(refined_plan, workload)
-
-  metrics = compute_metrics(final_plan, workload, capacity, normalized)
-  warnings = compute_warnings(final_plan, workload, metrics)
-  suggestions = generate_suggestions(metrics, warnings, normalized)
-  trace = build_decision_trace(final_plan)
-
-  return build_plan_output(final_plan, metrics, warnings, suggestions, trace, validation.infos)
-```
-
-### Funzioni chiave (pseudocodice sintetico)
-
-```text
-validate_all(...):
-  errors = []
-  infos = []
-  run structural checks (required, type, enum, ranges)
-  run relational checks (references, unique IDs, date windows)
-  run domain checks (pomodoro bounds, step constraints)
-  apply clamp rules that are allowed (e.g. stability) and append info
-  return {errors, infos}
-
-normalize_inputs(...):
-  apply global defaults
-  apply per-subject defaults
-  enforce precedence: manual > subject override > global > engine default
-  derive selected_exam_date when single exam date
-  derive start_at/end_by defaults
-  return normalized model
-
-compute_workload_per_subject(...):
-  for subject in subjects:
-    theoretical = cfu * 25
-    attendance_discount = lessons_hours OR attendance_hours_per_cfu*cfu
-    base = max(0, (theoretical - attendance_discount) * difficulty_coeff * prep_gap_coeff)
-    buffer = base * subject_buffer_percent
-    target = base + buffer
-  return workload map
-
-assign_sessions_deterministic(...):
-  for slot in chronological order:
-    candidates = feasible subjects for slot
-    score each candidate
-    pick max score with deterministic tie-breakers
-    allocate minutes and update residuals
-  return plan
-
-compute_metrics(...):
-  compute all raw metrics
-  clamp every metric in [0,1]
-  confidence_score = weighted sum
-  confidence_level from thresholds
-  return metrics
-```
-
-## 18) Contratto JSON formale
-
-### 18.1 `plan_request.json`
+## 17) Contratto JSON formale
+### 17.1 `plan_request.json`
 - `schema_version` (string, required)
 - `request_id` (string, required)
 - `generated_at` (datetime ISO, required)
@@ -351,51 +232,15 @@ compute_metrics(...):
 `replan_context` minimo:
 - `previous_plan_id`, `previous_generated_at`, `replan_reason`, `from_date`
 
-### 18.2 `global_config.json`
-- `schema_version` (string, required)
-- `daily_cap_minutes` (int, required, default 180, step 15, min=session_duration)
-- `daily_cap_tolerance_minutes` (int, required, default 30, min 0, max < session_duration)
-- `subject_buffer_percent` (float, required, default 0.10, [0,1])
-- `critical_but_possible_threshold` (float, required, default 0.80, step 0.01, [0,1])
-- `study_on_exam_day` (bool, required, default false)
-- `max_subjects_per_day` (int, required, default 3, min 1)
-- `session_duration_minutes` (int, required, default 30, min 30, max daily_cap, step 15)
-- `sleep_hours_per_day` (float, required, default 8, [0,16])
-- `sleep_overrides_by_weekday` (object, optional)
-- `sleep_overrides_by_date` (object, optional)
-- `pomodoro_enabled` (bool, required, default true)
-- `pomodoro_work_minutes` (int, required, default 25, min 15, max < session_duration)
-- `pomodoro_short_break_minutes` (int, required, max floor(work/4))
-- `pomodoro_long_break_minutes` (int, required, max floor(work/2))
-- `pomodoro_long_break_every` (int, required, min 2)
-- `pomodoro_count_breaks_in_capacity` (bool, required, default true)
-- `stability_vs_recovery` (float, required, default 0.4, step 0.1, [0,1], clamp+info)
-- `default_strategy_mode` (enum required: `forward|backward|hybrid`, default `hybrid`)
+### 17.2 `global_config.json`
+Campi richiesti: come schema `schema/planner_global_config.schema.json`.
 
-### 18.3 `subjects.json`
+### 17.3 `subjects.json`
 Root:
 - `schema_version` (string, required)
 - `subjects` (array, required, non-empty)
 
-Item `subjects[]`:
-- `subject_id` (string, required, unique)
-- `name` (string, required)
-- `cfu` (number, required, >0)
-- `difficulty_coeff` (float, required, default 1.0)
-- `priority` (int, required, [1,N])
-- `completion_initial` (float, required, [0,1])
-- `attending` (bool, required)
-- `attendance_hours_per_cfu` (float, optional, default 6 + info)
-- `exam_dates` (array date, required, non-empty)
-- `selected_exam_date` (required se `exam_dates` >1, altrimenti dedotta)
-- `start_at` (optional, default giorno successivo al run)
-- `end_by` (optional, default giorno prima esame)
-- `strategy_mode` (optional, default globale)
-- `pomodoro_overrides` (optional, partial override consentito)
-- `overrides` (optional, schema chiuso)
-
-### 18.4 Whitelist `overrides` per materia (schema chiuso)
-Chiavi ammesse:
+Whitelist `overrides` per materia (schema chiuso):
 - `subject_buffer_percent`
 - `critical_but_possible_threshold`
 - `strategy_mode`
@@ -412,7 +257,7 @@ Chiavi ammesse:
 
 Qualsiasi altra chiave => `INVALID_OVERRIDE_KEY`.
 
-### 18.5 `calendar_constraints.json`
+### 17.4 `calendar_constraints.json`
 Root:
 - `schema_version` (required)
 - `constraints` (array, required)
@@ -427,36 +272,21 @@ Item:
 - `category` (optional)
 - `notes` (optional)
 
-### 18.6 `manual_sessions.json`
-Root:
-- `schema_version` (required)
-- `manual_sessions` (array, required)
-
-Item:
-- `session_id` (optional; se assente generato)
-- `subject_id` (required, deve esistere)
-- `date` (required)
-- `planned_minutes` (required, >0)
-- `actual_minutes_done` (optional)
-- `status` (required enum `planned|done|skipped|partial`)
-- `locked_by_user` (required default true)
-- `notes` (optional, informativo)
-
-Regole coerenza stato:
+### 17.5 `manual_sessions.json`
+Campi richiesti: come schema `schema/planner_manual_sessions.schema.json` + regole coerenza stato:
 - skipped => actual=0
 - done => actual assente o >= planned
 - partial => 0 < actual < planned
 
-### 18.7 `plan_output.json`
+### 17.6 `plan_output.json`
 - `schema_version`, `plan_id`, `generated_at`
 - `plan_summary`, `daily_plan`, `metrics`
 - `warnings`, `suggestions`, `decision_trace`
 - `effective_config`
 - `validation_report` (`errors[]`, `infos[]`)
 
-## 19) Catalogo info e errori
-
-### 19.1 Info codes
+## 18) Catalogo info e errori
+### Info codes
 - `INFO_DEFAULT_ATTENDANCE_HOURS_PER_CFU_APPLIED`
 - `INFO_DEFAULT_START_AT_APPLIED`
 - `INFO_DEFAULT_END_BY_APPLIED`
@@ -465,10 +295,7 @@ Regole coerenza stato:
 - `INFO_DEFAULT_POMODORO_OVERRIDES_APPLIED`
 - `INFO_GENERATED_SESSION_ID`
 
-Formato info:
-- `field_path`, `info_code`, `message`, `applied_value`
-
-### 19.2 Error codes
+### Error codes
 - `INVALID_SCHEMA_VERSION`
 - `MISSING_REQUIRED_FIELD`
 - `INVALID_TYPE`
@@ -485,12 +312,9 @@ Formato info:
 - `INVALID_POMODORO_CONFIG`
 - `INVALID_STATUS_MINUTES_COMBINATION`
 
-Formato errore:
-- `field_path`, `error_code`, `message`, `suggested_fix`
-
-## 20) Regole validazione (no fail-fast)
+## 19) Regole validazione (obbligatorie)
 - Il validatore deve restituire lista completa errori (no first-error-stop).
-- Deve includere anche `infos` su default/clamp applicati.
+- Deve includere `infos` su default/clamp applicati.
 
 Regole minime:
 1. `daily_cap_minutes >= session_duration_minutes` e step 15.
@@ -504,146 +328,7 @@ Regole minime:
 9. `stability_vs_recovery` fuori [0,1] -> clamp + info.
 10. vincoli pomodoro invalidi -> errore.
 
-## 21) Esempi JSON (contract tests)
-
-### Esempio A — `global_config.json`
-```json
-{
-  "schema_version": "1.0.0",
-  "daily_cap_minutes": 180,
-  "daily_cap_tolerance_minutes": 30,
-  "subject_buffer_percent": 0.1,
-  "critical_but_possible_threshold": 0.8,
-  "study_on_exam_day": false,
-  "max_subjects_per_day": 3,
-  "session_duration_minutes": 30,
-  "sleep_hours_per_day": 8,
-  "pomodoro_enabled": true,
-  "pomodoro_work_minutes": 25,
-  "pomodoro_short_break_minutes": 5,
-  "pomodoro_long_break_minutes": 15,
-  "pomodoro_long_break_every": 4,
-  "pomodoro_count_breaks_in_capacity": true,
-  "stability_vs_recovery": 0.4,
-  "default_strategy_mode": "hybrid"
-}
-```
-
-### Esempio B — `subjects.json`
-```json
-{
-  "schema_version": "1.0.0",
-  "subjects": [
-    {
-      "subject_id": "alg1",
-      "name": "Algebra 1",
-      "cfu": 9,
-      "difficulty_coeff": 1.1,
-      "priority": 1,
-      "completion_initial": 0.2,
-      "attending": true,
-      "exam_dates": ["2026-06-20", "2026-07-05"],
-      "selected_exam_date": "2026-06-20",
-      "strategy_mode": "hybrid",
-      "overrides": {
-        "subject_buffer_percent": 0.12,
-        "pomodoro_count_breaks_in_capacity": true
-      }
-    }
-  ]
-}
-```
-
-### Esempio C — `manual_sessions.json`
-```json
-{
-  "schema_version": "1.0.0",
-  "manual_sessions": [
-    {
-      "subject_id": "alg1",
-      "date": "2026-05-12",
-      "planned_minutes": 60,
-      "status": "partial",
-      "actual_minutes_done": 35,
-      "locked_by_user": true,
-      "notes": "Ripasso capitolo 2"
-    }
-  ]
-}
-```
-
-### Esempio D — validazione con errori + info
-```json
-{
-  "errors": [
-    {
-      "field_path": "subjects[0].completion_initial",
-      "error_code": "OUT_OF_RANGE",
-      "message": "completion_initial must be in [0,1]",
-      "suggested_fix": "Use a value between 0.0 and 1.0"
-    }
-  ],
-  "infos": [
-    {
-      "field_path": "subjects[0].attendance_hours_per_cfu",
-      "info_code": "INFO_DEFAULT_ATTENDANCE_HOURS_PER_CFU_APPLIED",
-      "message": "Default attendance_hours_per_cfu applied",
-      "applied_value": 6
-    }
-  ]
-}
-```
-
-### Esempio E — override non ammesso (errore)
-```json
-{
-  "schema_version": "1.0.0",
-  "subjects": [
-    {
-      "subject_id": "ana1",
-      "name": "Analisi 1",
-      "cfu": 9,
-      "difficulty_coeff": 1.0,
-      "priority": 1,
-      "completion_initial": 0.4,
-      "attending": false,
-      "exam_dates": ["2026-06-22"],
-      "overrides": {
-        "unknown_key": 123
-      }
-    }
-  ]
-}
-```
-
-Output atteso: `INVALID_OVERRIDE_KEY`.
-
-### Esempio F — pomodoro invalido (errore)
-```json
-{
-  "schema_version": "1.0.0",
-  "daily_cap_minutes": 180,
-  "daily_cap_tolerance_minutes": 30,
-  "subject_buffer_percent": 0.1,
-  "critical_but_possible_threshold": 0.8,
-  "study_on_exam_day": false,
-  "max_subjects_per_day": 3,
-  "session_duration_minutes": 30,
-  "sleep_hours_per_day": 8,
-  "pomodoro_enabled": true,
-  "pomodoro_work_minutes": 30,
-  "pomodoro_short_break_minutes": 10,
-  "pomodoro_long_break_minutes": 20,
-  "pomodoro_long_break_every": 1,
-  "pomodoro_count_breaks_in_capacity": true,
-  "stability_vs_recovery": 0.4,
-  "default_strategy_mode": "hybrid"
-}
-```
-
-Output atteso: `INVALID_POMODORO_CONFIG`.
-
-## 22) Casi limite (decisioni)
+## 20) Casi limite (decisioni)
 1. `start_at > end_by` => ERROR
 2. `selected_exam_date` non in `exam_dates` => ERROR
 3. `completion_initial` fuori [0,1] => ERROR
@@ -655,18 +340,7 @@ Output atteso: `INVALID_POMODORO_CONFIG`.
 9. materia oltre 100% per manual sessions => WARN
 10. replan con solo skipped e nessuno slot nuovo => WARN critico
 
-## 23) Suggerimenti automatici (trade-off)
-1. aumentare cap giornaliero
-2. aumentare tolleranza
-3. ridurre buffer percentuale
-4. spostare esame a data alternativa
-5. passare backward -> hybrid
-6. ridurre max materie/giorno
-7. aumentare max materie/giorno
-8. abbassare stability verso recupero
-9. alzare stability verso stabilità
-
-## 24) Decision trace consigliato
+## 21) Decision trace
 Per ogni assegnazione:
 - `decision_id`
 - `timestamp`
@@ -679,26 +353,67 @@ Per ogni assegnazione:
 - `tradeoff_note`
 - `confidence_impact`
 
-## 25) Principi non negoziabili
+## 22) Principi non negoziabili
 - Deterministico (stesso input => stesso output)
 - Affidabile e trasparente
 - Adattivo ma stabile
-- Umano oltre che formalmente corretto
+- Formalmente corretto e comprensibile
 
-## 26) Artefatti machine-readable e note sviluppo
-- Schema machine-readable JSON disponibili in `schema/`:
-  - `planner_plan_request.schema.json`
-  - `planner_global_config.schema.json`
-  - `planner_subjects.schema.json`
-  - `planner_manual_sessions.schema.json`
-  - `planner_plan_output.schema.json`
-- Esempio output completo disponibile in `examples/planner_output.example.json`.
-- Smoke test non-golden e invarianti in `smoke/non_golden_smoke_scenarios.md`.
-- Linee guida TDD e modularità testabile in `docs/testing_strategy.md`.
+## 23) Testing obbligatorio
+### 23.1 Strategia
+- TDD: scrivere prima test unitari/funzionali, poi implementazione.
+- Funzioni atomiche, piccole e indipendenti.
+- Ogni funzione pubblica deve avere test: happy path + edge cases + error path.
 
-### Altri suggerimenti pratici
-1. introdurre validazione schema automatica in CI (prima degli integration test);
-2. aggiungere test di determinismo con hash dell'output su input fisso;
-3. separare nettamente `validator`, `normalizer`, `scheduler`, `metrics`, `reporter`;
-4. versionare schema (`schema_version`) con changelog compatibilità;
-5. creare un generatore di dataset random per test property-based (invarianti, no golden).
+### 23.2 Struttura test minima
+- `tests/unit/`
+  - validazione schema
+  - normalizzazione default/override
+  - calcolo monte ore
+  - calcolo metriche
+  - scoring/tie-breaker
+- `tests/integration/`
+  - pipeline end-to-end su piccoli input
+  - replan su update sessioni
+- `tests/property/`
+  - invarianti: range metriche, no superamento vincoli hard, determinismo
+
+### 23.3 Invarianti minime da testare sempre
+1. determinismo: stesso input -> stesso output;
+2. metriche clippate in [0,1];
+3. rispetto vincoli hard;
+4. error aggregation no-fail-fast;
+5. coerenza status sessione (`done/skipped/partial`).
+
+### 23.4 Smoke scenarios (non-golden) obbligatori
+Scenario 1 — Piano base fattibile:
+- output valido rispetto agli schema JSON;
+- nessuna sessione oltre `cap+tolleranza`;
+- `confidence_score` in [0,1];
+- nessun errore in `validation_report.errors`.
+
+Scenario 2 — Buffer non allocabile:
+- warning `BUFFER_NOT_ALLOCABLE` presente almeno per una materia;
+- copertura base >= soglia critica;
+- buffer coverage < 1 per materia coinvolta.
+
+Scenario 3 — Override invalido:
+- validatore restituisce `INVALID_OVERRIDE_KEY`;
+- include `field_path` e `suggested_fix`.
+
+Scenario 4 — Pomodoro invalido:
+- validatore restituisce `INVALID_POMODORO_CONFIG`.
+
+Scenario 5 — Replan con skipped:
+- passato non riscritto;
+- solo orizzonte futuro ricalcolato;
+- `stability_score` in [0,1];
+- `decision_trace` non vuoto.
+
+## 24) Artefatti machine-readable
+- `schema/planner_plan_request.schema.json`
+- `schema/planner_global_config.schema.json`
+- `schema/planner_subjects.schema.json`
+- `schema/planner_manual_sessions.schema.json`
+- `schema/planner_plan_output.schema.json`
+- `examples/planner_output.example.json`
