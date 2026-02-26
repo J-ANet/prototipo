@@ -22,6 +22,7 @@ DEFAULT_GLOBAL_CONFIG: dict[str, Any] = {
     "stability_vs_recovery": 0.4,
     "human_distribution_mode": "off",
     "max_same_subject_streak_days": 3,
+    "max_same_subject_consecutive_blocks": 3,
     "target_daily_subject_variety": 2,
 }
 
@@ -41,6 +42,7 @@ _ALLOWED_OVERRIDE_KEYS = {
     "pomodoro_count_breaks_in_capacity",
     "human_distribution_mode",
     "max_same_subject_streak_days",
+    "max_same_subject_consecutive_blocks",
 }
 
 

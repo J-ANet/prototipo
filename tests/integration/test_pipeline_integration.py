@@ -147,3 +147,116 @@ def test_replan_with_manual_sessions_updates_future_only(tmp_path: Path) -> None
     assert any(item.get("slot_id") == "old-1" for item in plan)
     assert not any(item.get("slot_id") == "old-2" for item in plan)
     assert any(item.get("manual_session_id") == "m1" for item in plan)
+
+
+def _longest_monotone_run(plan: list[dict], target_day: str) -> int:
+    run = 0
+    best = 0
+    prev = None
+    for item in sorted((x for x in plan if x.get("date") == target_day and x.get("bucket") == "base"), key=lambda x: str(x.get("slot_id", ""))):
+        sid = item.get("subject_id")
+        if sid == prev:
+            run += 1
+        else:
+            prev = sid
+            run = 1
+        best = max(best, run)
+    return best
+
+
+def test_distribution_limit_reduces_same_day_monotone_sequences_without_losing_feasibility() -> None:
+    payload = {
+        "effective_config": {
+            "global": {
+                "daily_cap_minutes": 240,
+                "daily_cap_tolerance_minutes": 0,
+                "subject_buffer_percent": 0.1,
+                "critical_but_possible_threshold": 0.8,
+                "study_on_exam_day": True,
+                "max_subjects_per_day": 3,
+                "session_duration_minutes": 30,
+                "sleep_hours_per_day": 8,
+                "pomodoro_enabled": False,
+                "pomodoro_work_minutes": 25,
+                "pomodoro_short_break_minutes": 5,
+                "pomodoro_long_break_minutes": 15,
+                "pomodoro_long_break_every": 4,
+                "pomodoro_count_breaks_in_capacity": True,
+                "stability_vs_recovery": 0.4,
+                "default_strategy_mode": "hybrid",
+                "human_distribution_mode": "off",
+                "max_same_subject_streak_days": 5,
+                "max_same_subject_consecutive_blocks": 3,
+                "target_daily_subject_variety": 2,
+            },
+            "by_subject": {},
+        },
+        "subjects": {
+            "subjects": [
+                {
+                    "subject_id": "math",
+                    "priority": 5,
+                    "cfu": 1,
+                    "difficulty_coeff": 1,
+                    "completion_initial": 0,
+                    "attending": False,
+                    "exam_dates": ["2026-01-03"],
+                    "selected_exam_date": "2026-01-03",
+                    "start_at": "2026-01-01",
+                    "end_by": "2026-01-03",
+                },
+                {
+                    "subject_id": "physics",
+                    "priority": 1,
+                    "cfu": 1,
+                    "difficulty_coeff": 1,
+                    "completion_initial": 0,
+                    "attending": False,
+                    "exam_dates": ["2026-01-03"],
+                    "selected_exam_date": "2026-01-03",
+                    "start_at": "2026-01-01",
+                    "end_by": "2026-01-03",
+                },
+            ]
+        },
+        "global_config": {
+            "daily_cap_minutes": 240,
+            "daily_cap_tolerance_minutes": 0,
+            "subject_buffer_percent": 0.1,
+            "critical_but_possible_threshold": 0.8,
+            "study_on_exam_day": True,
+            "max_subjects_per_day": 3,
+            "session_duration_minutes": 30,
+            "sleep_hours_per_day": 8,
+            "pomodoro_enabled": False,
+            "pomodoro_work_minutes": 25,
+            "pomodoro_short_break_minutes": 5,
+            "pomodoro_long_break_minutes": 15,
+            "pomodoro_long_break_every": 4,
+            "pomodoro_count_breaks_in_capacity": True,
+            "stability_vs_recovery": 0.4,
+            "default_strategy_mode": "hybrid",
+            "human_distribution_mode": "off",
+            "max_same_subject_streak_days": 5,
+            "max_same_subject_consecutive_blocks": 3,
+            "target_daily_subject_variety": 2,
+        },
+        "calendar_constraints": {"constraints": []},
+        "manual_sessions": {"manual_sessions": []},
+    }
+
+    without_limit = run_planner(payload)
+
+    payload["effective_config"]["global"]["human_distribution_mode"] = "strict"
+    payload["effective_config"]["global"]["max_same_subject_consecutive_blocks"] = 2
+    payload["global_config"]["human_distribution_mode"] = "strict"
+    payload["global_config"]["max_same_subject_consecutive_blocks"] = 2
+    with_limit = run_planner(payload)
+
+    day = "2026-01-01"
+    no_limit_run = _longest_monotone_run(without_limit["plan"], day)
+    with_limit_run = _longest_monotone_run(with_limit["plan"], day)
+
+    assert with_limit_run < no_limit_run
+    assert without_limit["plan_summary"]["total_planned_minutes"] == with_limit["plan_summary"]["total_planned_minutes"]
+    assert sum(without_limit["remaining_base_minutes"].values()) == sum(with_limit["remaining_base_minutes"].values())
