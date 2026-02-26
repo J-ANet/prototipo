@@ -17,6 +17,7 @@ from .replan import (
 )
 from planner.reporting.decision_trace import DecisionTraceCollector
 from planner.reporting.warnings import build_warnings_and_suggestions
+from planner.metrics.collector import compute_humanity_metrics
 from .slot_builder import build_daily_slots
 from .workload import compute_subject_workload
 
@@ -160,6 +161,7 @@ def run_planner(payload: dict[str, Any]) -> dict[str, Any]:
 
     new_horizon = allocation_result["allocations"]
     metrics = compute_reallocation_metrics(previous_horizon, new_horizon)
+    humanity_metrics = compute_humanity_metrics(new_horizon)
     warnings, suggestions = build_warnings_and_suggestions(
         subjects=subjects,
         manual_sessions=manual_sessions,
@@ -168,6 +170,7 @@ def run_planner(payload: dict[str, Any]) -> dict[str, Any]:
         workload_by_subject=workload_by_subject,
         remaining_base_minutes=allocation_result["remaining_base_minutes"],
         remaining_buffer_minutes=allocation_result["remaining_buffer_minutes"],
+        humanity_score=humanity_metrics["humanity_score"],
     )
     warnings.extend(build_critical_warnings(manual_sessions=manual_sessions, slots_in_window=constrained_slots))
 
@@ -183,6 +186,9 @@ def run_planner(payload: dict[str, Any]) -> dict[str, Any]:
     ]
 
     total_planned_minutes = sum(int(item.get("minutes", 0) or 0) for item in final_plan if item.get("subject_id") != "__slack__")
+    humanity_tip = ""
+    if humanity_metrics["humanity_score"] < 0.45:
+        humanity_tip = "Anticipa 1-2 blocchi di materia secondaria nei giorni più concentrati."
 
     return {
         "status": "ok",
@@ -193,6 +199,8 @@ def run_planner(payload: dict[str, Any]) -> dict[str, Any]:
             "total_planned_minutes": total_planned_minutes,
             "horizon_start": horizon_start.isoformat(),
             "horizon_end": horizon_end.isoformat(),
+            "humanity_score": round(float(humanity_metrics["humanity_score"]), 4),
+            "humanity_tip": humanity_tip,
         },
         "warnings": warnings,
         "suggestions": suggestions,

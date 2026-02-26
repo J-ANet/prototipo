@@ -6,6 +6,8 @@ from collections import defaultdict
 from datetime import date, datetime
 from typing import Any
 
+from planner.metrics.collector import compute_humanity_metrics
+
 
 def _clamp01(value: float) -> float:
     return max(0.0, min(1.0, float(value)))
@@ -47,6 +49,8 @@ def build_warnings_and_suggestions(
     workload_by_subject: dict[str, dict[str, Any]],
     remaining_base_minutes: dict[str, int],
     remaining_buffer_minutes: dict[str, int],
+    humanity_score: float | None = None,
+    humanity_threshold: float = 0.45,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Generate mandatory warnings (spec section 15) and coherent suggestions."""
     warnings: list[dict[str, Any]] = []
@@ -65,6 +69,12 @@ def build_warnings_and_suggestions(
         sid = str(alloc.get("subject_id", ""))
         if sid and sid != "__slack__":
             planned_by_subject[sid] += int(alloc.get("minutes", 0) or 0)
+
+    computed_humanity = (
+        _clamp01(humanity_score)
+        if humanity_score is not None
+        else float(compute_humanity_metrics(allocations).get("humanity_score", 1.0))
+    )
 
     # (1) Manual sessions compressing future capacity.
     next_7_days = {reference_day.fromordinal(reference_day.toordinal() + i) for i in range(7)}
@@ -224,6 +234,23 @@ def build_warnings_and_suggestions(
                     "message": "Rivedere cap giornaliero e priorità materia per ridurre il rischio esame.",
                 }
             )
+
+    if computed_humanity < _clamp01(humanity_threshold):
+        warnings.append(
+            {
+                "code": "WARN_PLAN_MONOTONOUS",
+                "severity": "warning",
+                "humanity_score": round(computed_humanity, 4),
+                "threshold": round(_clamp01(humanity_threshold), 4),
+                "message": "Distribuzione piano troppo monotona rispetto alla soglia di varietà umana.",
+            }
+        )
+        suggestions.append(
+            {
+                "code": "SUGGEST_INCREASE_VARIETY",
+                "message": "Anticipa 1-2 blocchi di materia secondaria nei giorni più concentrati per migliorare varietà e ritmo.",
+            }
+        )
 
     unique_suggestions: list[dict[str, Any]] = []
     seen: set[tuple[str, str]] = set()
