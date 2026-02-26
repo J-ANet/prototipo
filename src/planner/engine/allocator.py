@@ -10,6 +10,7 @@ Rule preserved: never allocate buffer for a subject while that same subject stil
 
 from __future__ import annotations
 
+from collections import defaultdict
 from datetime import date, datetime
 from typing import Any
 
@@ -57,6 +58,60 @@ def _alloc_chunk(
     )
 
 
+
+
+def _distribution_limits_for_mode(mode: str) -> dict[str, Any]:
+    if mode == "strict":
+        return {
+            "penalty_multiplier": 2.0,
+            "default_max_streak": 2,
+            "min_variety": 3,
+        }
+    if mode == "balanced":
+        return {
+            "penalty_multiplier": 1.0,
+            "default_max_streak": 3,
+            "min_variety": 2,
+        }
+    return {
+        "penalty_multiplier": 0.0,
+        "default_max_streak": 10**6,
+        "min_variety": 1,
+    }
+
+
+def _resolve_subject_distribution(
+    subject_id: str,
+    global_distribution: dict[str, Any],
+    config_by_subject: dict[str, dict[str, Any]],
+) -> dict[str, Any]:
+    merged = {**global_distribution, **(config_by_subject.get(subject_id, {}))}
+    mode = str(merged.get("human_distribution_mode", "off")).lower()
+    if mode not in {"off", "balanced", "strict"}:
+        mode = "off"
+    limits = _distribution_limits_for_mode(mode)
+    max_streak = int(merged.get("max_same_subject_streak_days", limits["default_max_streak"]))
+    target_variety = int(merged.get("target_daily_subject_variety", limits["min_variety"]))
+    return {
+        "mode": mode,
+        "penalty_multiplier": float(limits["penalty_multiplier"]),
+        "max_streak_days": max(1, max_streak),
+        "target_daily_subject_variety": max(1, target_variety),
+    }
+
+
+def _current_streak_days(subject_id: str, day: str | date, minutes_by_day: dict[date, dict[str, int]]) -> int:
+    reference_day = _to_date(day)
+    streak = 0
+    cursor = reference_day
+    while True:
+        previous = cursor.fromordinal(cursor.toordinal() - 1)
+        if minutes_by_day.get(previous, {}).get(subject_id, 0) > 0:
+            streak += 1
+            cursor = previous
+            continue
+        return streak
+
 def allocate_plan(
     *,
     slots: list[dict[str, Any]],
@@ -65,6 +120,8 @@ def allocate_plan(
     session_minutes: int = 30,
     score_features_by_subject: dict[str, dict[str, float]] | None = None,
     continuity_config: dict[str, float | int | bool] | None = None,
+    distribution_config: dict[str, Any] | None = None,
+    config_by_subject: dict[str, dict[str, Any]] | None = None,
     decision_trace: DecisionTraceCollector | None = None,
 ) -> dict[str, Any]:
     """Allocate minutes with deterministic iteration and tie-breaks."""
@@ -93,6 +150,16 @@ def allocate_plan(
     effective_continuity = (
         DEFAULT_CONTINUITY_CONFIG if continuity_config is None else {**DEFAULT_CONTINUITY_CONFIG, **continuity_config}
     )
+    global_distribution = distribution_config or {}
+    per_subject_distribution = {
+        str(subject.get("subject_id", "")): _resolve_subject_distribution(
+            str(subject.get("subject_id", "")),
+            global_distribution,
+            config_by_subject or {},
+        )
+        for subject in ordered_subjects
+    }
+    day_subject_set: dict[date, set[str]] = defaultdict(set)
 
     def _register_history(day_value: str | date, sid: str, minutes: int) -> None:
         if sid == "__slack__" or minutes <= 0:
@@ -100,6 +167,7 @@ def allocate_plan(
         day = _to_date(day_value)
         day_history = history_minutes_by_day.setdefault(day, {})
         day_history[sid] = day_history.get(sid, 0) + minutes
+        day_subject_set[day].add(sid)
         history_total_minutes_by_day[day] = history_total_minutes_by_day.get(day, 0) + minutes
 
     # Phase 1: forward assignment with score + deterministic tie-break.
@@ -121,7 +189,21 @@ def allocate_plan(
                     total_minutes_by_day=history_total_minutes_by_day,
                     config=effective_continuity,
                 )
-                score = compute_score({**features, "streak_penalty": continuity_penalty})
+                dist_cfg = per_subject_distribution.get(sid, _distribution_limits_for_mode("off"))
+                mode = str(dist_cfg.get("mode", "off"))
+                day = _to_date(slot["date"])
+                streak_days = _current_streak_days(sid, day, history_minutes_by_day)
+                if mode in {"balanced", "strict"} and streak_days >= int(dist_cfg.get("max_streak_days", 10**6)):
+                    continue
+
+                unique_subjects_today = day_subject_set.get(day, set())
+                variety_missing = max(
+                    0,
+                    int(dist_cfg.get("target_daily_subject_variety", 1))
+                    - len(unique_subjects_today | {sid}),
+                )
+                soft_penalty = float(dist_cfg.get("penalty_multiplier", 0.0)) * float(variety_missing) * 0.25
+                score = compute_score({**features, "streak_penalty": continuity_penalty + soft_penalty})
                 tie = deterministic_tie_breaker_key(subject, reference_day=slot["date"])
                 candidates.append((score, tie, subject))
 

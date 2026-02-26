@@ -43,7 +43,9 @@
                 "pomodoro_short_break_minutes",
                 "pomodoro_long_break_minutes",
                 "pomodoro_long_break_every",
-                "pomodoro_count_breaks_in_capacity"
+                "pomodoro_count_breaks_in_capacity",
+                "human_distribution_mode",
+                "max_same_subject_streak_days"
               ]
             }
           }

@@ -41,7 +41,10 @@
     "pomodoro_long_break_every": {"type": "integer", "minimum": 2, "default": 4},
     "pomodoro_count_breaks_in_capacity": {"type": "boolean", "default": true},
     "stability_vs_recovery": {"type": "number", "minimum": 0, "maximum": 1, "default": 0.4},
-    "default_strategy_mode": {"type": "string", "enum": ["forward", "backward", "hybrid"], "default": "hybrid"}
+    "default_strategy_mode": {"type": "string", "enum": ["forward", "backward", "hybrid"], "default": "hybrid"},
+    "human_distribution_mode": {"type": "string", "enum": ["off", "balanced", "strict"], "default": "off"},
+    "max_same_subject_streak_days": {"type": "integer", "minimum": 1, "default": 3},
+    "target_daily_subject_variety": {"type": "integer", "minimum": 1, "default": 2}
   },
   "allOf": [
     {
