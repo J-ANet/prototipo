@@ -15,7 +15,6 @@ def validate_domain_inputs(loaded_payload: dict[str, Any]) -> ValidationReport:
     subjects_payload = loaded_payload.get("subjects", {})
     manual_payload = loaded_payload.get("manual_sessions", {})
 
-    _clamp_stability(global_config, report)
     _validate_pomodoro_config(global_config, "$.global_config", report)
 
     subjects = subjects_payload.get("subjects", []) if isinstance(subjects_payload, dict) else []
@@ -73,20 +72,6 @@ def validate_domain_inputs(loaded_payload: dict[str, Any]) -> ValidationReport:
 
     return report
 
-
-def _clamp_stability(global_config: dict[str, Any], report: ValidationReport) -> None:
-    stability = global_config.get("stability_vs_recovery")
-    if not isinstance(stability, (int, float)) or isinstance(stability, bool):
-        return
-    clamped = min(1.0, max(0.0, float(stability)))
-    if clamped != stability:
-        global_config["stability_vs_recovery"] = clamped
-        report.add_info(
-            code="INFO_CLAMP_STABILITY_APPLIED",
-            message="stability_vs_recovery was clamped into [0,1]",
-            field_path="$.global_config.stability_vs_recovery",
-            extra={"applied_value": clamped},
-        )
 
 
 def _validate_pomodoro_config(source: dict[str, Any], path: str, report: ValidationReport) -> None:

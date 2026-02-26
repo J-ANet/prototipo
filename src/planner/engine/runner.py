@@ -19,4 +19,5 @@ def run_planner(payload: dict[str, Any]) -> dict[str, Any]:
             "calendar_constraints": payload["calendar_constraints"],
             "manual_sessions": payload["manual_sessions"],
         },
+        "effective_config": payload.get("effective_config", {}),
     }
