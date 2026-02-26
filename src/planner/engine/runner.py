@@ -15,6 +15,7 @@ from .replan import (
     read_replan_window,
     split_previous_plan,
 )
+from planner.reporting.warnings import build_warnings_and_suggestions
 from .slot_builder import build_daily_slots
 from .workload import compute_subject_workload
 
@@ -149,17 +150,50 @@ def run_planner(payload: dict[str, Any]) -> dict[str, Any]:
 
     new_horizon = allocation_result["allocations"]
     metrics = compute_reallocation_metrics(previous_horizon, new_horizon)
-    warnings = build_critical_warnings(manual_sessions=manual_sessions, slots_in_window=constrained_slots)
+    warnings, suggestions = build_warnings_and_suggestions(
+        subjects=subjects,
+        manual_sessions=manual_sessions,
+        slots_in_window=constrained_slots,
+        allocations=new_horizon,
+        workload_by_subject=workload_by_subject,
+        remaining_base_minutes=allocation_result["remaining_base_minutes"],
+        remaining_buffer_minutes=allocation_result["remaining_buffer_minutes"],
+    )
+    warnings.extend(build_critical_warnings(manual_sessions=manual_sessions, slots_in_window=constrained_slots))
 
     final_plan = [*preserved_previous, *locked_allocations, *new_horizon]
+
+    daily_plan_map: dict[str, list[dict[str, Any]]] = {}
+    for item in final_plan:
+        day = str(item.get("date", ""))
+        daily_plan_map.setdefault(day, []).append(item)
+    daily_plan = [
+        {"date": day, "allocations": sorted(items, key=lambda x: str(x.get("slot_id", "")))}
+        for day, items in sorted(daily_plan_map.items(), key=lambda entry: entry[0])
+    ]
+
+    total_planned_minutes = sum(int(item.get("minutes", 0) or 0) for item in final_plan if item.get("subject_id") != "__slack__")
 
     return {
         "status": "ok",
         "plan": final_plan,
+        "daily_plan": daily_plan,
+        "plan_summary": {
+            "subjects_count": len(subjects),
+            "total_planned_minutes": total_planned_minutes,
+            "horizon_start": horizon_start.isoformat(),
+            "horizon_end": horizon_end.isoformat(),
+        },
         "warnings": warnings,
+        "suggestions": suggestions,
         "effective_done_minutes": effective_done_minutes,
         "remaining_minutes": remaining_minutes,
         "reallocated_ratio": metrics["reallocated_ratio"],
         "stability_score": metrics["stability_score"],
         "effective_config": payload.get("effective_config", {}),
+        "slots_in_window": constrained_slots,
+        "subjects": subjects,
+        "remaining_base_minutes": allocation_result["remaining_base_minutes"],
+        "remaining_buffer_minutes": allocation_result["remaining_buffer_minutes"],
+        "workload_by_subject": workload_by_subject,
     }
