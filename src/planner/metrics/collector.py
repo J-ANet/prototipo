@@ -20,6 +20,81 @@ def _confidence_level(score: float) -> str:
     return "low"
 
 
+def compute_humanity_metrics(allocations: list[dict[str, Any]]) -> dict[str, float]:
+    """Compute plan-humanity metrics in [0,1]."""
+    plan_items = [item for item in allocations if str(item.get("subject_id", "")) != "__slack__"]
+
+    if not plan_items:
+        return {
+            "subject_switching_score": 1.0,
+            "streak_burden_score": 1.0,
+            "daily_monotony_score": 1.0,
+            "humanity_score": 1.0,
+        }
+
+    ordered = sorted(plan_items, key=lambda item: (str(item.get("date", "")), str(item.get("slot_id", ""))))
+    day_subject_totals: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
+    days_by_subject: dict[str, set[date]] = defaultdict(set)
+
+    switches = 0
+    for idx, alloc in enumerate(ordered):
+        sid = str(alloc.get("subject_id", ""))
+        day = str(alloc.get("date", ""))
+        minutes = max(0, int(alloc.get("minutes", 0) or 0))
+        day_subject_totals[day][sid] += minutes
+        try:
+            days_by_subject[sid].add(date.fromisoformat(day))
+        except ValueError:
+            continue
+        if idx > 0 and sid != str(ordered[idx - 1].get("subject_id", "")):
+            switches += 1
+
+    switch_ratio = switches / max(1, len(ordered) - 1)
+    unique_subjects_per_day = [len(subjects) for subjects in day_subject_totals.values()]
+    variety_gain = mean(min(1.0, max(0, count - 1) / 2.0) for count in unique_subjects_per_day)
+    over_fragmentation = mean(max(0.0, (count - 3) / 3.0) for count in unique_subjects_per_day)
+    subject_switching_score = _clamp01((0.75 * variety_gain) + (0.25 * switch_ratio) - (0.30 * over_fragmentation))
+
+    def _max_streak(subject_days: set[date]) -> int:
+        if not subject_days:
+            return 0
+        ordered_days = sorted(subject_days)
+        best = 1
+        current = 1
+        for idx in range(1, len(ordered_days)):
+            if (ordered_days[idx] - ordered_days[idx - 1]).days == 1:
+                current += 1
+                best = max(best, current)
+            else:
+                current = 1
+        return best
+
+    streak_penalties = [max(0, _max_streak(subject_days) - 2) for subject_days in days_by_subject.values()]
+    active_days = max(1, len(day_subject_totals))
+    streak_burden = sum(penalty * penalty for penalty in streak_penalties)
+    streak_burden_score = _clamp01(1.0 - min(1.0, streak_burden / max(1, active_days * 2)))
+
+    monotony_penalty = []
+    for subject_totals in day_subject_totals.values():
+        day_total = max(1, sum(subject_totals.values()))
+        dominant_share = max(subject_totals.values()) / day_total
+        monotony_penalty.append(max(0.0, (dominant_share - 0.55) / 0.45))
+    daily_monotony_score = _clamp01(1.0 - mean(monotony_penalty))
+
+    humanity_score = _clamp01(
+        (0.40 * subject_switching_score)
+        + (0.35 * streak_burden_score)
+        + (0.25 * daily_monotony_score)
+    )
+
+    return {
+        "subject_switching_score": subject_switching_score,
+        "streak_burden_score": streak_burden_score,
+        "daily_monotony_score": daily_monotony_score,
+        "humanity_score": humanity_score,
+    }
+
+
 def collect_metrics(result: dict[str, Any]) -> dict[str, Any]:
     """Compute normalized metrics with clamp in [0,1]."""
     allocations = [item for item in result.get("plan", []) if isinstance(item, dict)]
@@ -157,6 +232,7 @@ def collect_metrics(result: dict[str, Any]) -> dict[str, Any]:
 
     reallocated_ratio = _clamp01(float(result.get("reallocated_ratio", 0.0) or 0.0))
     stability_score = _clamp01(float(result.get("stability_score", 1.0) or 1.0))
+    humanity_metrics = compute_humanity_metrics(allocations)
 
     confidence_score = _clamp01(
         (0.28 * coverage_subject)
@@ -191,6 +267,10 @@ def collect_metrics(result: dict[str, Any]) -> dict[str, Any]:
         "concentration_score": concentration_score,
         "reallocated_ratio": reallocated_ratio,
         "stability_score": stability_score,
+        "subject_switching_score": humanity_metrics["subject_switching_score"],
+        "streak_burden_score": humanity_metrics["streak_burden_score"],
+        "daily_monotony_score": humanity_metrics["daily_monotony_score"],
+        "humanity_score": humanity_metrics["humanity_score"],
         "confidence_score": confidence_score,
         "confidence_level": _confidence_level(confidence_score),
         "plan_size": len(allocations),

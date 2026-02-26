@@ -212,3 +212,68 @@ def test_smoke_scenario_5_replan_with_skipped(tmp_path: Path) -> None:
     assert not any(x["slot_id"] == "old-future" for x in result["plan"])
     assert 0.0 <= metrics["stability_score"] <= 1.0
     assert len(result["decision_trace"]) > 0
+
+
+def test_smoke_scenario_6_monotony_improves_with_balanced_mode(tmp_path: Path) -> None:
+    base_subjects = {
+        "schema_version": "1.0",
+        "subjects": [
+            {
+                "subject_id": "s1", "name": "Core", "cfu": 2.0, "difficulty_coeff": 1, "priority": 3,
+                "completion_initial": 0, "attending": False,
+                "exam_dates": ["2026-01-04"], "selected_exam_date": "2026-01-04", "start_at": "2026-01-01", "end_by": "2026-01-04"
+            },
+            {
+                "subject_id": "s2", "name": "Secondary", "cfu": 0.6, "difficulty_coeff": 1, "priority": 1,
+                "completion_initial": 0, "attending": False,
+                "exam_dates": ["2026-01-04"], "selected_exam_date": "2026-01-04", "start_at": "2026-01-01", "end_by": "2026-01-04"
+            },
+        ],
+    }
+
+    off_dir = tmp_path / "off"
+    balanced_dir = tmp_path / "balanced"
+    off_dir.mkdir()
+    balanced_dir.mkdir()
+
+    off_payload = _run_cli(
+        off_dir,
+        global_config=_global_config(
+            daily_cap_minutes=240,
+            daily_cap_tolerance_minutes=0,
+            human_distribution_mode="off",
+            target_daily_subject_variety=2,
+        ),
+        subjects=base_subjects,
+        constraints={"constraints": []},
+        manual_sessions={"schema_version": "1.0", "manual_sessions": []},
+    )
+    balanced_payload = _run_cli(
+        balanced_dir,
+        global_config=_global_config(
+            daily_cap_minutes=240,
+            daily_cap_tolerance_minutes=0,
+            human_distribution_mode="balanced",
+            target_daily_subject_variety=2,
+            max_same_subject_streak_days=2,
+            max_same_subject_consecutive_blocks=2,
+        ),
+        subjects=base_subjects,
+        constraints={"constraints": []},
+        manual_sessions={"schema_version": "1.0", "manual_sessions": []},
+    )
+
+    assert off_payload["_exit_code"] == 0
+    assert balanced_payload["_exit_code"] == 0
+
+    assert 0.0 <= off_payload["metrics"]["humanity_score"] <= 1.0
+    assert 0.0 <= balanced_payload["metrics"]["humanity_score"] <= 1.0
+    assert balanced_payload["metrics"]["humanity_score"] > off_payload["metrics"]["humanity_score"]
+
+    off_warnings = {item["code"] for item in off_payload["plan_output"]["warnings"]}
+    balanced_warnings = {item["code"] for item in balanced_payload["plan_output"]["warnings"]}
+    assert "WARN_PLAN_MONOTONOUS" in off_warnings
+    assert "WARN_PLAN_MONOTONOUS" not in balanced_warnings
+
+    off_suggestion_messages = [item.get("message", "") for item in off_payload["plan_output"]["suggestions"]]
+    assert any("Anticipa 1-2 blocchi di materia secondaria" in message for message in off_suggestion_messages)
