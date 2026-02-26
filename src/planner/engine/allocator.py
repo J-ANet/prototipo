@@ -13,6 +13,8 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Any
 
+from planner.reporting.decision_trace import DecisionTraceCollector
+
 from .scoring import compute_score, deterministic_tie_breaker_key
 
 
@@ -57,6 +59,7 @@ def allocate_plan(
     workload_by_subject: dict[str, dict[str, Any]],
     session_minutes: int = 30,
     score_features_by_subject: dict[str, dict[str, float]] | None = None,
+    decision_trace: DecisionTraceCollector | None = None,
 ) -> dict[str, Any]:
     """Allocate minutes with deterministic iteration and tie-breaks."""
 
@@ -104,6 +107,17 @@ def allocate_plan(
             sid = str(chosen["subject_id"])
             chunk = min(session_minutes, available, remaining_base[sid])
             _alloc_chunk(subject_id=sid, slot=slot, minutes=chunk, bucket="base", out=allocations)
+            if decision_trace is not None:
+                decision_trace.record(
+                    slot_id=str(slot["slot_id"]),
+                    candidate_subjects=[str(item[2]["subject_id"]) for item in candidates],
+                    scores_by_subject={str(item[2]["subject_id"]): float(item[0]) for item in candidates},
+                    selected_subject_id=sid,
+                    applied_rules=["RULE_BASE_BEFORE_BUFFER", "RULE_SCORE_ORDER", "RULE_TIE_BREAK_DETERMINISTIC"],
+                    blocked_constraints=[],
+                    tradeoff_note="Selezione con punteggio massimo e tie-break deterministico.",
+                    confidence_impact=0.01,
+                )
             remaining_base[sid] -= chunk
             available -= chunk
 
@@ -133,6 +147,17 @@ def allocate_plan(
                 break
             chunk = min(session_minutes, free_minutes, remaining_buffer[sid])
             _alloc_chunk(subject_id=sid, slot=slot, minutes=chunk, bucket="buffer", out=allocations)
+            if decision_trace is not None:
+                decision_trace.record(
+                    slot_id=str(slot["slot_id"]),
+                    candidate_subjects=[str(item["subject_id"]) for item in candidates],
+                    scores_by_subject={str(item["subject_id"]): 1.0 for item in candidates},
+                    selected_subject_id=sid,
+                    applied_rules=["RULE_PRE_EXAM_BUFFER", "RULE_BASE_BEFORE_BUFFER"],
+                    blocked_constraints=[],
+                    tradeoff_note="Allocato buffer su materia con base completata e prima dell'esame.",
+                    confidence_impact=0.005,
+                )
             remaining_buffer[sid] -= chunk
             free_minutes -= chunk
 
@@ -152,11 +177,33 @@ def allocate_plan(
                 continue
             chunk = min(session_minutes, free_minutes, remaining_buffer[sid])
             _alloc_chunk(subject_id=sid, slot=slot, minutes=chunk, bucket="buffer", out=allocations)
+            if decision_trace is not None:
+                decision_trace.record(
+                    slot_id=str(slot["slot_id"]),
+                    candidate_subjects=[str(item.get("subject_id", "")) for item in _subject_order(ordered_subjects, slot["date"])],
+                    scores_by_subject={sid: 1.0},
+                    selected_subject_id=sid,
+                    applied_rules=["RULE_GAP_FILL_BUFFER", "RULE_BASE_BEFORE_BUFFER"],
+                    blocked_constraints=[],
+                    tradeoff_note="Riempimento gap con buffer disponibile.",
+                    confidence_impact=0.002,
+                )
             remaining_buffer[sid] -= chunk
             free_minutes -= chunk
 
         if free_minutes > 0:
             _alloc_chunk(subject_id="__slack__", slot=slot, minutes=free_minutes, bucket="slack", out=allocations)
+            if decision_trace is not None:
+                decision_trace.record(
+                    slot_id=str(slot["slot_id"]),
+                    candidate_subjects=[],
+                    scores_by_subject={},
+                    selected_subject_id="__slack__",
+                    applied_rules=["RULE_GAP_FILL_SLACK"],
+                    blocked_constraints=["NO_ELIGIBLE_SUBJECT"],
+                    tradeoff_note="Minuti residui marcati come slack esplicito.",
+                    confidence_impact=-0.01,
+                )
 
     return {
         "allocations": allocations,

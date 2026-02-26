@@ -35,6 +35,15 @@ def validate_inputs_with_schema(payloads: dict[str, Any]) -> ValidationReport:
     return report
 
 
+def validate_plan_output_with_schema(plan_output: dict[str, Any]) -> ValidationReport:
+    """Validate serialized plan_output payload against its JSON schema."""
+    report = ValidationReport()
+    schema_dir = Path(__file__).resolve().parents[3] / "schema"
+    schema = json.loads((schema_dir / "planner_plan_output.schema.json").read_text(encoding="utf-8"))
+    _validate_node(value=plan_output, schema=schema, path="$.plan_output", report=report)
+    return report
+
+
 def _validate_node(*, value: Any, schema: dict[str, Any], path: str, report: ValidationReport) -> None:
     expected_type = schema.get("type")
     if expected_type:

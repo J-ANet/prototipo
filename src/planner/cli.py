@@ -21,6 +21,7 @@ from planner.validation import (
     validate_domain_inputs,
     validate_inputs_with_schema,
     validate_plan_request,
+    validate_plan_output_with_schema,
 )
 
 
@@ -129,7 +130,24 @@ def run_plan_command(request_path: str, output_path: str) -> int:
 
     result = run_planner(loaded_request)
     metrics = collect_metrics(result)
-    write_json(output_path, build_success_report(result, metrics, validation_report))
+    success_payload = build_success_report(result, metrics, validation_report)
+    output_report = validate_plan_output_with_schema(success_payload.get("plan_output", {}))
+    if output_report.errors:
+        errors = [
+            ValidationError(code=issue.code, message=issue.message, path=issue.field_path)
+            for issue in output_report.errors
+        ]
+        write_json(
+            output_path,
+            build_error_report_with_validation(
+                errors,
+                validation_report=output_report,
+                code="plan_output_serialization_error",
+            ),
+        )
+        return 2
+
+    write_json(output_path, success_payload)
     return 0
 
 
