@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://planner-cli.local/schema/plan_request.schema.json",
+  "title": "PlanRequest",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "request_id",
+    "generated_at",
+    "global_config_path",
+    "subjects_path",
+    "calendar_constraints_path",
+    "manual_sessions_path"
+  ],
+  "properties": {
+    "schema_version": {"type": "string"},
+    "request_id": {"type": "string", "minLength": 1},
+    "generated_at": {"type": "string", "format": "date-time"},
+    "global_config_path": {"type": "string", "minLength": 1},
+    "subjects_path": {"type": "string", "minLength": 1},
+    "calendar_constraints_path": {"type": "string", "minLength": 1},
+    "manual_sessions_path": {"type": "string", "minLength": 1},
+    "replan_context": {
+      "type": "object",
+      "required": ["previous_plan_id", "previous_generated_at", "replan_reason", "from_date"],
+      "properties": {
+        "previous_plan_id": {"type": "string"},
+        "previous_generated_at": {"type": "string", "format": "date-time"},
+        "replan_reason": {
+          "type": "string",
+          "enum": ["input_changed", "sessions_updated", "manual_trigger"]
+        },
+        "from_date": {"type": "string", "format": "date"}
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://planner-cli.local/schema/plan_output.schema.json",
+  "title": "PlanOutput",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "plan_id",
+    "generated_at",
+    "plan_summary",
+    "daily_plan",
+    "metrics",
+    "warnings",
+    "suggestions",
+    "decision_trace",
+    "effective_config",
+    "validation_report"
+  ],
+  "properties": {
+    "schema_version": {"type": "string"},
+    "plan_id": {"type": "string"},
+    "generated_at": {"type": "string", "format": "date-time"},
+    "plan_summary": {"type": "object"},
+    "daily_plan": {"type": "array"},
+    "metrics": {"type": "object"},
+    "warnings": {"type": "array", "items": {"type": "object"}},
+    "suggestions": {"type": "array", "items": {"type": "object"}},
+    "decision_trace": {"type": "array", "items": {"type": "object"}},
+    "effective_config": {"type": "object"},
+    "validation_report": {
+      "type": "object",
+      "required": ["errors", "infos"],
+      "properties": {
+        "errors": {"type": "array", "items": {"type": "object"}},
+        "infos": {"type": "array", "items": {"type": "object"}}
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}
