@@ -1,0 +1,7 @@
+# Keep documentation files in subfolders as text/LF
+/docs/*.md text eol=lf
+/smoke/*.md text eol=lf
+
+# JSON artifacts as text/LF
+*.json text eol=lf
+*.schema.json text eol=lf
