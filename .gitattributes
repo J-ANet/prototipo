@@ -1,7 +1,9 @@
-# Keep documentation files in subfolders as text/LF
-/docs/*.md text eol=lf
-/smoke/*.md text eol=lf
+# Normalize core source and docs files as UTF-8 text with LF line endings.
+* text=auto eol=lf
 
-# JSON artifacts as text/LF
+# Explicit text overrides for project assets.
+*.md text eol=lf
+*.py text eol=lf
+*.toml text eol=lf
 *.json text eol=lf
 *.schema.json text eol=lf
