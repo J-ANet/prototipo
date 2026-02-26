@@ -9,7 +9,7 @@ from typing import Any
 from planner.engine import run_planner
 from planner.io import read_json, write_json
 from planner.metrics import collect_metrics
-from planner.normalization import normalize_request
+from planner.normalization import normalize_request, resolve_effective_config
 from planner.reporting import (
     build_error_report,
     build_error_report_with_validation,
@@ -99,6 +99,9 @@ def run_plan_command(request_path: str, output_path: str) -> int:
         return 2
 
     loaded_request["plan_request"] = request_payload
+    loaded_request["effective_config"] = resolve_effective_config(loaded_request, validation_report)
+    if isinstance(loaded_request.get("global_config"), dict):
+        loaded_request["global_config"]["stability_vs_recovery"] = loaded_request["effective_config"]["global"]["stability_vs_recovery"]
 
     domain_report = validate_domain_inputs(loaded_request)
     schema_report = validate_inputs_with_schema(loaded_request)

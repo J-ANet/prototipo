@@ -74,18 +74,6 @@ def _validate_node(*, value: Any, schema: dict[str, Any], path: str, report: Val
                         suggested_fix="Remove unsupported key or use one of schema-defined fields.",
                     )
 
-        property_names = schema.get("propertyNames")
-        if isinstance(property_names, dict) and "enum" in property_names:
-            allowed_names = set(property_names["enum"])
-            for key in value:
-                if key not in allowed_names:
-                    report.add_error(
-                        code="INVALID_OVERRIDE_KEY",
-                        message=f"Override key {key!r} is not allowed",
-                        field_path=f"{path}.{key}",
-                        suggested_fix=f"Use one of: {', '.join(sorted(allowed_names))}",
-                    )
-
         for key, prop_schema in properties.items():
             if key in value:
                 _validate_node(value=value[key], schema=prop_schema, path=f"{path}.{key}", report=report)
