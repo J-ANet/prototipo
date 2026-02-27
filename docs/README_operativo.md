@@ -166,6 +166,17 @@ Di seguito una tabella operativa con i campi usati dal planner, con default/rang
 
 Se soft e hard entrano in conflitto, prevalgono sempre gli hard constraints.
 
+
+## Nota audit smoke: interpretazione dei delta
+
+Nel report `results/realistic_smoke/README.md` la sezione **Opinione** è generata in modo data-driven da `results/realistic_smoke/comparisons.json`:
+
+- `abs(humanity_delta) <= 0.1` → impatto **marginale**
+- `0.1 < abs(humanity_delta) <= 0.3` → impatto **moderato**
+- `abs(humanity_delta) > 0.3` → impatto **forte**
+
+Il testo mostrato per ogni scenario riporta sempre il delta reale (`Δ`) e la direzione (`incremento`, `calo`, `stabile`) derivati dai dati del confronto, senza frasi hardcoded per singolo scenario.
+
 ---
 
 ## Esempi JSON completi

@@ -20,8 +20,8 @@ README_OUT = ROOT / "results" / "realistic_smoke" / "README.md"
 
 def _build_opinion_thresholds() -> list[dict]:
     return [
-        {"label": "marginale", "max_abs_delta": 0.1499},
-        {"label": "moderato", "max_abs_delta": 0.2999},
+        {"label": "marginale", "max_abs_delta": 0.1},
+        {"label": "moderato", "max_abs_delta": 0.3},
         {"label": "forte", "max_abs_delta": 1.0},
     ]
 
@@ -34,6 +34,10 @@ def _opinion_label_for_delta(delta: float, thresholds: list[dict]) -> str:
     return str(thresholds[-1]["label"])
 
 
+def classify_humanity_delta(delta: float) -> str:
+    return _opinion_label_for_delta(delta, _build_opinion_thresholds())
+
+
 def _opinion_text(delta: float, label: str) -> str:
     if delta > 0:
         trend = "incremento"
@@ -42,6 +46,29 @@ def _opinion_text(delta: float, label: str) -> str:
     else:
         trend = "stabile"
     return f"Impatto {label} ({trend}) su humanity_score: Δ={delta:+.4f}."
+
+
+def _format_opinion_line(item: dict) -> str:
+    delta = float(item["humanity_delta"])
+    label = str(item["opinion"]["label"])
+    direction = "incremento" if delta > 0 else "calo" if delta < 0 else "stabile"
+    return f"- **{item['scenario']}**: impatto **{label}** ({direction}) su humanity_score, con Δ={delta:+.4f}."
+
+
+def _format_threshold_lines(thresholds: list[dict]) -> list[str]:
+    lines: list[str] = []
+    lower = 0.0
+    for idx, band in enumerate(sorted(thresholds, key=lambda item: float(item["max_abs_delta"]))):
+        label = str(band["label"])
+        upper = float(band["max_abs_delta"])
+        if idx == 0:
+            lines.append(f"- `{label}`: `abs(delta) < {upper:.4f}`")
+        elif idx == len(thresholds) - 1:
+            lines.append(f"- `{label}`: `abs(delta) >= {lower:.4f}`")
+        else:
+            lines.append(f"- `{label}`: `{lower:.4f} <= abs(delta) < {upper:.4f}`")
+        lower = upper
+    return lines
 
 
 def build_comparisons_report(scenarios: list[dict], thresholds: list[dict]) -> dict:
@@ -92,13 +119,11 @@ def _validate_comparisons_consistency(comparisons: dict) -> None:
 
 
 def build_results_readme(report: dict, comparisons: dict) -> str:
-    thresholds = {item["label"]: float(item["max_abs_delta"]) for item in comparisons["opinion_thresholds"]}
+    threshold_rows = _format_threshold_lines(comparisons["opinion_thresholds"])
     opinion_lines = []
     mono_rows = []
     for item in comparisons["comparisons"]:
-        opinion_lines.append(
-            f"- **{item['scenario']}**: {item['opinion']['text']}"
-        )
+        opinion_lines.append(_format_opinion_line(item))
         mono_rows.append(
             f"| `{item['scenario']}` | {item['mono_day_ratio']['pre']:.4f} | {item['mono_day_ratio']['post']:.4f} |"
         )
@@ -118,10 +143,8 @@ def build_results_readme(report: dict, comparisons: dict) -> str:
             "",
             "## Opinione (data-driven da `comparisons.json`)",
             "",
-            "Soglie `abs(humanity_delta)`:",
-            f"- `marginale`: `<= {thresholds['marginale']:.4f}`",
-            f"- `moderato`: `{thresholds['marginale'] + 0.0001:.4f} - {thresholds['moderato']:.4f}`",
-            f"- `forte`: `>= {thresholds['moderato'] + 0.0001:.4f}`",
+            "Soglie `abs(humanity_delta)` usate nell'audit smoke:",
+            *threshold_rows,
             "",
             *opinion_lines,
             "",

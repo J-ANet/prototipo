@@ -13,8 +13,10 @@ _generate_realistic_smoke = importlib.util.module_from_spec(_SPEC)
 _SPEC.loader.exec_module(_generate_realistic_smoke)
 
 _build_opinion_thresholds = _generate_realistic_smoke._build_opinion_thresholds
+_format_opinion_line = _generate_realistic_smoke._format_opinion_line
 _validate_comparisons_consistency = _generate_realistic_smoke._validate_comparisons_consistency
 build_comparisons_report = _generate_realistic_smoke.build_comparisons_report
+classify_humanity_delta = _generate_realistic_smoke.classify_humanity_delta
 
 
 def _scenario(name: str, delta: float) -> dict:
@@ -26,25 +28,49 @@ def _scenario(name: str, delta: float) -> dict:
     }
 
 
-def test_build_comparisons_assigns_marginale_for_zero_delta() -> None:
-    comparisons = build_comparisons_report([_scenario("delta_zero", 0.0)], _build_opinion_thresholds())
+@pytest.mark.parametrize(
+    ("delta", "expected_label"),
+    [
+        (0.0, "marginale"),
+        (0.0999, "marginale"),
+        (0.1, "marginale"),
+        (0.1001, "moderato"),
+        (0.2999, "moderato"),
+        (0.3, "moderato"),
+        (0.3001, "forte"),
+        (0.75, "forte"),
+        (-0.75, "forte"),
+    ],
+)
+def test_classify_humanity_delta_threshold_edges(delta: float, expected_label: str) -> None:
+    assert classify_humanity_delta(delta) == expected_label
 
-    assert comparisons["comparisons"][0]["opinion"]["label"] == "marginale"
+
+def test_build_comparisons_assigns_labels_from_thresholds() -> None:
+    comparisons = build_comparisons_report(
+        [_scenario("delta_zero", 0.0), _scenario("delta_mid", 0.2), _scenario("delta_high", 0.45)],
+        _build_opinion_thresholds(),
+    )
+
+    labels = [item["opinion"]["label"] for item in comparisons["comparisons"]]
+    assert labels == ["marginale", "moderato", "forte"]
     _validate_comparisons_consistency(comparisons)
 
 
-def test_build_comparisons_assigns_moderato_for_mid_delta() -> None:
-    comparisons = build_comparisons_report([_scenario("delta_mid", 0.2)], _build_opinion_thresholds())
+def test_format_opinion_line_keeps_delta_and_direction_coherent() -> None:
+    item = {
+        "scenario": "scenario_coerente",
+        "humanity_delta": -0.3123,
+        "opinion": {"label": "forte", "text": "unused"},
+        "mono_day_ratio": {"pre": 1.0, "post": 0.7},
+    }
 
-    assert comparisons["comparisons"][0]["opinion"]["label"] == "moderato"
-    _validate_comparisons_consistency(comparisons)
+    line = _format_opinion_line(item)
 
-
-def test_build_comparisons_assigns_forte_for_high_delta() -> None:
-    comparisons = build_comparisons_report([_scenario("delta_high", 0.45)], _build_opinion_thresholds())
-
-    assert comparisons["comparisons"][0]["opinion"]["label"] == "forte"
-    _validate_comparisons_consistency(comparisons)
+    assert "**scenario_coerente**" in line
+    assert "impatto **forte**" in line
+    assert "(calo)" in line
+    assert "Δ=-0.3123" in line
 
 
 def test_validate_comparisons_fails_on_incoherent_label_delta() -> None:
