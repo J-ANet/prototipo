@@ -263,6 +263,10 @@ def _concentration_bias(mode: str) -> float:
     return -0.01
 
 
+def _concentration_delta(mode: str) -> float:
+    return _concentration_bias(mode)
+
+
 def _concentration_adjusted_features(features: dict[str, float], mode: str) -> dict[str, float]:
     adjusted = dict(features)
     concentration_penalty = float(adjusted.get("concentration_penalty", 0.0))
@@ -284,7 +288,7 @@ def allocate_plan(
     distribution_config: dict[str, Any] | None = None,
     config_by_subject: dict[str, dict[str, Any]] | None = None,
     strategy_mode_by_subject: dict[str, str] | None = None,
-    concentration_mode_by_subject: dict[str, str] | None = None,
+    subject_concentration_mode_by_subject: dict[str, str] | None = None,
     decision_trace: DecisionTraceCollector | None = None,
 ) -> dict[str, Any]:
     """Allocate minutes with deterministic iteration and tie-breaks."""
@@ -343,16 +347,13 @@ def allocate_plan(
         sid: str((strategy_mode_by_subject or {}).get(sid, fallback_strategy_mode_by_subject.get(sid, default_strategy_mode))).lower()
         for sid in fallback_strategy_mode_by_subject
     }
-    default_concentration_mode = _normalize_concentration_mode(
-        (distribution_config or {}).get("default_subject_concentration_mode", "concentrated")
-    )
     per_subject_concentration_mode: dict[str, str] = {}
     concentration_mode_source: dict[str, str] = {}
     for subject in ordered_subjects:
         sid = str(subject.get("subject_id", ""))
         resolved_mode, resolution = _resolve_concentration_mode(
-            (concentration_mode_by_subject or {}).get(sid),
-            fallback=default_concentration_mode,
+            (subject_concentration_mode_by_subject or {}).get(sid),
+            fallback="concentrated",
         )
         per_subject_concentration_mode[sid] = resolved_mode
         concentration_mode_source[sid] = resolution
@@ -444,7 +445,8 @@ def allocate_plan(
                     phase="base",
                 )
                 concentration_multiplier = _concentration_multiplier(concentration_mode)
-                score = (base_score + _concentration_bias(concentration_mode)) * strategy_weight * concentration_multiplier
+                concentration_delta = _concentration_delta(concentration_mode)
+                score = (base_score + concentration_delta) * strategy_weight * concentration_multiplier
                 tie = deterministic_tie_breaker_key(subject, reference_day=slot["date"])
                 candidates.append((score, tie, subject))
                 concentration_metadata_by_subject[sid] = {
@@ -486,11 +488,11 @@ def allocate_plan(
                 )
             elif concentration_resolution == "missing":
                 tradeoff_note = (
-                    f"{tradeoff_note} Modalità concentrazione mancante: fallback deterministico '{default_concentration_mode}'."
+                    f"{tradeoff_note} Modalità concentrazione mancante: fallback deterministico 'concentrated'."
                 )
             elif concentration_resolution == "invalid":
                 tradeoff_note = (
-                    f"{tradeoff_note} Modalità concentrazione non valida: fallback deterministico '{default_concentration_mode}'."
+                    f"{tradeoff_note} Modalità concentrazione non valida: fallback deterministico 'concentrated'."
                 )
             chunk = min(session_minutes, available, remaining_base[sid])
             _alloc_chunk(subject_id=sid, slot=slot, minutes=chunk, bucket="base", out=allocations)
