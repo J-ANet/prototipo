@@ -151,7 +151,7 @@ def _current_streak_days(subject_id: str, day: str | date, minutes_by_day: dict[
 
 
 def strategy_bias(subject_id: str, day: str | date, exam_day: date, mode: str) -> float:
-    """Return multiplicative bias from strategy mode and temporal distance to exam."""
+    """Backward-compatible strategy helper kept for external callers/tests."""
     _ = subject_id
     slot_day = _to_date(day)
     days_to_exam = max(0, (exam_day - slot_day).days)
@@ -168,6 +168,46 @@ def strategy_bias(subject_id: str, day: str | date, exam_day: date, mode: str) -
         return 1.0 + 0.45 * near_ratio
     # Hybrid: mostly neutral, slight acceleration close to exam.
     return 1.0 + 0.15 * near_ratio
+
+
+def _progress_in_horizon(day: date, start_day: date, anchor_day: date) -> float:
+    if anchor_day <= start_day:
+        return 1.0
+    clamped = min(max(day, start_day), anchor_day)
+    total = max(1, (anchor_day - start_day).days)
+    return float((clamped - start_day).days) / float(total)
+
+
+def _strategy_weight(
+    *,
+    day: str | date,
+    mode: str,
+    horizon_start: date,
+    horizon_end: date,
+    phase: str,
+) -> float:
+    slot_day = _to_date(day)
+    progress = _progress_in_horizon(slot_day, horizon_start, horizon_end)
+    early_ratio = 1.0 - progress
+    near_exam_ratio = progress
+
+    normalized_mode = str(mode or "hybrid").lower()
+    normalized_phase = str(phase or "base").lower()
+
+    if normalized_mode == "forward":
+        if normalized_phase == "base":
+            return 1.0 + 1.20 * early_ratio
+        return 1.0 + 0.60 * early_ratio
+    if normalized_mode == "backward":
+        if normalized_phase == "base":
+            return 1.0 + 1.20 * near_exam_ratio
+        return 1.0 + 1.00 * near_exam_ratio
+
+    # Hybrid: base prefers distributed allocation, while buffer gets an exam-proximity bias.
+    if normalized_phase == "base":
+        mid_peak = 1.0 - abs(progress - 0.5) * 2.0
+        return 1.0 + 0.04 * mid_peak + 0.03 * near_exam_ratio
+    return 1.0 + 0.35 * near_exam_ratio + 0.05 * early_ratio
 
 
 def _strategy_rule(mode: str) -> str:
@@ -219,6 +259,7 @@ def allocate_plan(
     continuity_config: dict[str, float | int | bool] | None = None,
     distribution_config: dict[str, Any] | None = None,
     config_by_subject: dict[str, dict[str, Any]] | None = None,
+    strategy_mode_by_subject: dict[str, str] | None = None,
     subject_concentration_mode_by_subject: dict[str, str] | None = None,
     decision_trace: DecisionTraceCollector | None = None,
 ) -> dict[str, Any]:
@@ -230,6 +271,8 @@ def allocate_plan(
     remaining_base: dict[str, int] = {}
     remaining_buffer: dict[str, int] = {}
     exam_day_by_subject: dict[str, date] = {}
+    horizon_start_by_subject: dict[str, date] = {}
+    horizon_end_by_subject: dict[str, date] = {}
 
     for subject in ordered_subjects:
         sid = str(subject["subject_id"])
@@ -237,9 +280,15 @@ def allocate_plan(
         remaining_base[sid] = max(0, int(round(float(workload.get("hours_base", 0.0)) * 60)))
         remaining_buffer[sid] = max(0, int(round(float(workload.get("hours_buffer", 0.0)) * 60)))
         exams = sorted(subject.get("exam_dates", []))
+        start_day = _to_date(subject.get("start_at", "1970-01-01"))
+        end_by_day = _to_date(subject.get("end_by", "9999-12-31"))
         selected = subject.get("selected_exam_date")
         exam_value = selected if selected else (exams[0] if exams else "9999-12-31")
-        exam_day_by_subject[sid] = _to_date(exam_value)
+        exam_day = _to_date(exam_value)
+        anchor_day = min(exam_day, end_by_day)
+        exam_day_by_subject[sid] = exam_day
+        horizon_start_by_subject[sid] = start_day
+        horizon_end_by_subject[sid] = max(start_day, anchor_day)
 
     allocations: list[dict[str, Any]] = []
     slack_by_slot: dict[str, int] = {}
@@ -258,13 +307,17 @@ def allocate_plan(
         for subject in ordered_subjects
     }
     default_strategy_mode = str((distribution_config or {}).get("default_strategy_mode", "hybrid")).lower()
-    strategy_mode_by_subject = {
+    fallback_strategy_mode_by_subject = {
         str(subject.get("subject_id", "")): str(
             (config_by_subject or {}).get(str(subject.get("subject_id", "")), {}).get(
                 "strategy_mode", default_strategy_mode
             )
         ).lower()
         for subject in ordered_subjects
+    }
+    effective_strategy_mode_by_subject = {
+        sid: str((strategy_mode_by_subject or {}).get(sid, fallback_strategy_mode_by_subject.get(sid, default_strategy_mode))).lower()
+        for sid in fallback_strategy_mode_by_subject
     }
     per_subject_concentration_mode: dict[str, str] = {}
     concentration_mode_source: dict[str, str] = {}
@@ -354,16 +407,14 @@ def allocate_plan(
                         "streak_penalty": continuity_penalty + soft_penalty + dynamic_streak_penalty,
                     }
                 )
-                strategy_mode = strategy_mode_by_subject.get(sid, "hybrid")
-                strategy_weight = strategy_bias(
-                    subject_id=sid,
+                strategy_mode = effective_strategy_mode_by_subject.get(sid, "hybrid")
+                strategy_weight = _strategy_weight(
                     day=slot["date"],
-                    exam_day=exam_day_by_subject[sid],
                     mode=strategy_mode,
+                    horizon_start=horizon_start_by_subject[sid],
+                    horizon_end=horizon_end_by_subject[sid],
+                    phase="base",
                 )
-                # Keep Phase 1 mostly neutral for hybrid.
-                if strategy_mode == "hybrid":
-                    strategy_weight = 1.0 + (strategy_weight - 1.0) * 0.25
                 concentration_multiplier = _concentration_multiplier(concentration_mode)
                 score = (base_score + _concentration_bias(concentration_mode)) * strategy_weight * concentration_multiplier
                 tie = deterministic_tie_breaker_key(subject, reference_day=slot["date"])
@@ -402,7 +453,7 @@ def allocate_plan(
             _alloc_chunk(subject_id=sid, slot=slot, minutes=chunk, bucket="base", out=allocations)
             if decision_trace is not None:
                 applied_rules = ["RULE_BASE_BEFORE_BUFFER", "RULE_SCORE_ORDER", "RULE_TIE_BREAK_DETERMINISTIC"]
-                applied_rules.append(_strategy_rule(strategy_mode_by_subject.get(sid, "hybrid")))
+                applied_rules.append(_strategy_rule(effective_strategy_mode_by_subject.get(sid, "hybrid")))
                 if forced_second_choice:
                     applied_rules.append("RULE_LIMIT_CONSECUTIVE_BLOCKS")
                 if concentration_mode_impacted_choice:
@@ -439,12 +490,13 @@ def allocate_plan(
                 continue
             if day > exam_day_by_subject[sid]:
                 continue
-            strategy_mode = strategy_mode_by_subject.get(sid, "hybrid")
-            strategy_weight = strategy_bias(
-                subject_id=sid,
+            strategy_mode = effective_strategy_mode_by_subject.get(sid, "hybrid")
+            strategy_weight = _strategy_weight(
                 day=slot["date"],
-                exam_day=exam_day_by_subject[sid],
                 mode=strategy_mode,
+                horizon_start=horizon_start_by_subject[sid],
+                horizon_end=horizon_end_by_subject[sid],
+                phase="buffer",
             )
             tie = deterministic_tie_breaker_key(subject, reference_day=slot["date"])
             candidates.append((strategy_weight, tie, subject))
@@ -467,7 +519,7 @@ def allocate_plan(
                     applied_rules=[
                         "RULE_PRE_EXAM_BUFFER",
                         "RULE_BASE_BEFORE_BUFFER",
-                        _strategy_rule(strategy_mode_by_subject.get(sid, "hybrid")),
+                        _strategy_rule(effective_strategy_mode_by_subject.get(sid, "hybrid")),
                     ],
                     blocked_constraints=[],
                     tradeoff_note="Allocato buffer su materia con base completata e prima dell'esame.",
@@ -492,12 +544,13 @@ def allocate_plan(
                 continue
             if remaining_buffer[sid] <= 0 or free_minutes < session_minutes:
                 continue
-            strategy_mode = strategy_mode_by_subject.get(sid, "hybrid")
-            strategy_weight = strategy_bias(
-                subject_id=sid,
+            strategy_mode = effective_strategy_mode_by_subject.get(sid, "hybrid")
+            strategy_weight = _strategy_weight(
                 day=slot["date"],
-                exam_day=exam_day_by_subject[sid],
                 mode=strategy_mode,
+                horizon_start=horizon_start_by_subject[sid],
+                horizon_end=horizon_end_by_subject[sid],
+                phase="buffer",
             )
             tie = deterministic_tie_breaker_key(subject, reference_day=slot["date"])
             candidates.append((strategy_weight, tie, subject))
@@ -520,7 +573,7 @@ def allocate_plan(
                     applied_rules=[
                         "RULE_GAP_FILL_BUFFER",
                         "RULE_BASE_BEFORE_BUFFER",
-                        _strategy_rule(strategy_mode_by_subject.get(sid, "hybrid")),
+                        _strategy_rule(effective_strategy_mode_by_subject.get(sid, "hybrid")),
                     ],
                     blocked_constraints=[],
                     tradeoff_note="Riempimento gap con buffer disponibile.",
