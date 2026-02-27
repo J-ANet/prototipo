@@ -164,6 +164,50 @@ def _longest_monotone_run(plan: list[dict], target_day: str) -> int:
     return best
 
 
+def _avg_base_day_index(plan: list[dict], subject_id: str) -> float:
+    weighted_sum = 0.0
+    total_minutes = 0
+    for item in plan:
+        if item.get("subject_id") != subject_id or item.get("bucket") != "base":
+            continue
+        day_idx = int(str(item.get("date")).split("-")[-1])
+        minutes = int(item.get("minutes", 0) or 0)
+        weighted_sum += float(day_idx * minutes)
+        total_minutes += minutes
+    assert total_minutes > 0
+    return weighted_sum / float(total_minutes)
+
+
+def _subject_distribution_stats(plan: list[dict], subject_id: str) -> dict[str, float]:
+    base_items = [item for item in plan if item.get("subject_id") == subject_id and item.get("bucket") == "base"]
+    daily_minutes: dict[str, int] = {}
+    max_block_minutes = 0
+    for item in base_items:
+        day = str(item.get("date"))
+        minutes = int(item.get("minutes", 0) or 0)
+        daily_minutes[day] = daily_minutes.get(day, 0) + minutes
+        max_block_minutes = max(max_block_minutes, minutes)
+
+    longest_day_streak = 0
+    current_streak = 0
+    previous_day_num = None
+    for day in sorted(daily_minutes):
+        day_num = int(day.split("-")[-1])
+        if previous_day_num is not None and day_num == previous_day_num + 1:
+            current_streak += 1
+        else:
+            current_streak = 1
+        longest_day_streak = max(longest_day_streak, current_streak)
+        previous_day_num = day_num
+
+    return {
+        "avg_day_index": _avg_base_day_index(plan, subject_id),
+        "active_days": float(len(daily_minutes)),
+        "longest_day_streak": float(longest_day_streak),
+        "max_block_minutes": float(max_block_minutes),
+    }
+
+
 def test_distribution_limit_reduces_same_day_monotone_sequences_without_losing_feasibility() -> None:
     payload = {
         "effective_config": {
@@ -338,19 +382,6 @@ def test_strategy_mode_changes_temporal_pattern_deterministically() -> None:
 
     assert first["plan"] == second["plan"]
 
-    def _avg_base_day_index(plan: list[dict], subject_id: str) -> float:
-        weighted_sum = 0.0
-        total_minutes = 0
-        for item in plan:
-            if item.get("subject_id") != subject_id or item.get("bucket") != "base":
-                continue
-            day_idx = int(str(item.get("date")).split("-")[-1])
-            minutes = int(item.get("minutes", 0) or 0)
-            weighted_sum += float(day_idx * minutes)
-            total_minutes += minutes
-        assert total_minutes > 0
-        return weighted_sum / float(total_minutes)
-
     forward_avg = _avg_base_day_index(first["plan"], "a_forward_subject")
     backward_avg = _avg_base_day_index(first["plan"], "z_backward_subject")
     assert forward_avg < backward_avg
@@ -419,19 +450,6 @@ def test_subject_concentration_mode_by_subject_changes_selection_and_traces_trad
     }
 
     result = run_planner(payload)
-
-    def _avg_base_day_index(plan: list[dict], subject_id: str) -> float:
-        weighted_sum = 0.0
-        total_minutes = 0
-        for item in plan:
-            if item.get("subject_id") != subject_id or item.get("bucket") != "base":
-                continue
-            day_idx = int(str(item.get("date")).split("-")[-1])
-            minutes = int(item.get("minutes", 0) or 0)
-            weighted_sum += float(day_idx * minutes)
-            total_minutes += minutes
-        assert total_minutes > 0
-        return weighted_sum / float(total_minutes)
 
     concentrated_avg = _avg_base_day_index(result["plan"], "chem")
     diffuse_avg = _avg_base_day_index(result["plan"], "bio")
@@ -561,19 +579,149 @@ def test_strategy_mode_per_subject_changes_plan_for_same_inputs() -> None:
     payload["effective_config"]["by_subject"]["target"]["strategy_mode"] = "backward"
     backward_result = run_planner(payload)
 
-    def _avg_base_day_index(plan: list[dict], subject_id: str) -> float:
-        weighted_sum = 0.0
-        total_minutes = 0
-        for item in plan:
-            if item.get("subject_id") != subject_id or item.get("bucket") != "base":
-                continue
-            day_idx = int(str(item.get("date")).split("-")[-1])
-            minutes = int(item.get("minutes", 0) or 0)
-            weighted_sum += float(day_idx * minutes)
-            total_minutes += minutes
-        assert total_minutes > 0
-        return weighted_sum / float(total_minutes)
-
     assert _avg_base_day_index(forward_result["plan"], "target") < _avg_base_day_index(backward_result["plan"], "target")
     assert any("RULE_STRATEGY_FORWARD" in item.get("applied_rules", []) for item in forward_result["decision_trace"])
     assert any("RULE_STRATEGY_BACKWARD" in item.get("applied_rules", []) for item in backward_result["decision_trace"])
+
+
+def test_concentrated_vs_diffuse_has_quantitative_distribution_differences() -> None:
+    payload = {
+        "effective_config": {
+            "global": {
+                "daily_cap_minutes": 180,
+                "daily_cap_tolerance_minutes": 0,
+                "subject_buffer_percent": 0.1,
+                "critical_but_possible_threshold": 0.8,
+                "study_on_exam_day": True,
+                "max_subjects_per_day": 3,
+                "session_duration_minutes": 30,
+                "sleep_hours_per_day": 8,
+                "pomodoro_enabled": False,
+                "stability_vs_recovery": 0.4,
+                "default_strategy_mode": "hybrid",
+                "human_distribution_mode": "off",
+            },
+            "by_subject": {},
+        },
+        "subjects": {
+            "subjects": [
+                {
+                    "subject_id": "target",
+                    "priority": 3,
+                    "cfu": 0.24,
+                    "difficulty_coeff": 1,
+                    "completion_initial": 0,
+                    "attending": False,
+                    "exam_dates": ["2026-01-06"],
+                    "selected_exam_date": "2026-01-06",
+                    "start_at": "2026-01-01",
+                    "end_by": "2026-01-06",
+                },
+                {
+                    "subject_id": "peer",
+                    "priority": 3,
+                    "cfu": 0.24,
+                    "difficulty_coeff": 1,
+                    "completion_initial": 0,
+                    "attending": False,
+                    "exam_dates": ["2026-01-06"],
+                    "selected_exam_date": "2026-01-06",
+                    "start_at": "2026-01-01",
+                    "end_by": "2026-01-06",
+                },
+            ]
+        },
+        "global_config": {
+            "daily_cap_minutes": 180,
+            "daily_cap_tolerance_minutes": 0,
+            "subject_buffer_percent": 0.1,
+            "session_duration_minutes": 30,
+        },
+        "calendar_constraints": {"constraints": []},
+        "manual_sessions": {"manual_sessions": []},
+    }
+
+    payload["effective_config"]["by_subject"] = {"target": {"subject_concentration_mode": "concentrated"}}
+    concentrated = run_planner(payload)
+
+    payload["effective_config"]["by_subject"] = {"target": {"subject_concentration_mode": "diffuse"}}
+    diffuse = run_planner(payload)
+
+    concentrated_stats = _subject_distribution_stats(concentrated["plan"], "target")
+    diffuse_stats = _subject_distribution_stats(diffuse["plan"], "target")
+
+    assert concentrated_stats["avg_day_index"] <= diffuse_stats["avg_day_index"]
+    assert concentrated_stats["active_days"] <= diffuse_stats["active_days"]
+    assert concentrated_stats["longest_day_streak"] >= diffuse_stats["longest_day_streak"]
+    assert concentrated_stats != diffuse_stats
+
+
+def test_forward_vs_backward_has_quantitative_monotonicity_and_streak_differences() -> None:
+    payload = {
+        "effective_config": {
+            "global": {
+                "daily_cap_minutes": 180,
+                "daily_cap_tolerance_minutes": 0,
+                "subject_buffer_percent": 0.2,
+                "critical_but_possible_threshold": 0.8,
+                "study_on_exam_day": True,
+                "max_subjects_per_day": 3,
+                "session_duration_minutes": 30,
+                "sleep_hours_per_day": 8,
+                "pomodoro_enabled": False,
+                "stability_vs_recovery": 0.4,
+                "default_strategy_mode": "hybrid",
+                "human_distribution_mode": "off",
+            },
+            "by_subject": {"target": {"strategy_mode": "forward"}},
+        },
+        "subjects": {
+            "subjects": [
+                {
+                    "subject_id": "target",
+                    "priority": 2,
+                    "cfu": 0.24,
+                    "difficulty_coeff": 1,
+                    "completion_initial": 0,
+                    "attending": False,
+                    "exam_dates": ["2026-01-06"],
+                    "selected_exam_date": "2026-01-06",
+                    "start_at": "2026-01-01",
+                    "end_by": "2026-01-06",
+                },
+                {
+                    "subject_id": "peer",
+                    "priority": 2,
+                    "cfu": 0.24,
+                    "difficulty_coeff": 1,
+                    "completion_initial": 0,
+                    "attending": False,
+                    "exam_dates": ["2026-01-06"],
+                    "selected_exam_date": "2026-01-06",
+                    "start_at": "2026-01-01",
+                    "end_by": "2026-01-06",
+                },
+            ]
+        },
+        "global_config": {
+            "daily_cap_minutes": 180,
+            "daily_cap_tolerance_minutes": 0,
+            "subject_buffer_percent": 0.2,
+            "session_duration_minutes": 30,
+            "default_strategy_mode": "hybrid",
+        },
+        "calendar_constraints": {"constraints": []},
+        "manual_sessions": {"manual_sessions": []},
+    }
+
+    forward = run_planner(payload)
+    payload["effective_config"]["by_subject"]["target"]["strategy_mode"] = "backward"
+    backward = run_planner(payload)
+
+    forward_stats = _subject_distribution_stats(forward["plan"], "target")
+    backward_stats = _subject_distribution_stats(backward["plan"], "target")
+
+    assert forward_stats["avg_day_index"] < backward_stats["avg_day_index"]
+    assert forward_stats["active_days"] <= backward_stats["active_days"]
+    assert forward_stats["longest_day_streak"] <= backward_stats["longest_day_streak"]
+    assert forward_stats["max_block_minutes"] == backward_stats["max_block_minutes"]

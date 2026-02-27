@@ -3,92 +3,186 @@
     {
       "scenario": "off_monotone",
       "mode": "off",
-      "metrics": {
-        "confidence_score": 0.4681,
-        "humanity_score": 0.5224,
-        "mono_day_ratio": 0.5,
-        "max_same_subject_streak_days": 3.0,
-        "switch_rate": 0.1613,
-        "subject_variety_index": 0.5
+      "pre_rebalance": {
+        "rebalance_max_swaps": 0,
+        "accepted_swaps": 0,
+        "metrics": {
+          "confidence_score": 0.4631,
+          "humanity_score": 0.3597,
+          "mono_day_ratio": 1.0,
+          "max_same_subject_streak_days": 1.0,
+          "switch_rate": 0.0968,
+          "subject_variety_index": 0.3333
+        },
+        "checks": {
+          "humanity_score": {
+            "value": 0.3597,
+            "threshold_min": 0.3,
+            "status": "pass"
+          },
+          "mono_day_ratio": {
+            "value": 1.0,
+            "threshold_max": 1.0,
+            "status": "pass"
+          },
+          "switch_rate": {
+            "value": 0.0968,
+            "threshold_min": 0.05,
+            "status": "pass"
+          },
+          "max_same_subject_streak_days": {
+            "value": 1.0,
+            "threshold_max": 99,
+            "status": "pass"
+          },
+          "subject_variety_index": {
+            "value": 0.3333,
+            "threshold_min": 0.3,
+            "status": "pass"
+          }
+        },
+        "status": "pass"
       },
-      "checks": {
-        "exit_code": {
-          "value": 0,
-          "expected": 0,
-          "status": "pass"
+      "post_rebalance": {
+        "rebalance_max_swaps": 20,
+        "accepted_swaps": 0,
+        "metrics": {
+          "confidence_score": 0.4631,
+          "humanity_score": 0.3597,
+          "mono_day_ratio": 1.0,
+          "max_same_subject_streak_days": 1.0,
+          "switch_rate": 0.0968,
+          "subject_variety_index": 0.3333
         },
-        "humanity_score": {
-          "value": 0.5224,
-          "threshold_min": 0.3,
-          "status": "pass"
+        "checks": {
+          "humanity_score": {
+            "value": 0.3597,
+            "threshold_min": 0.3,
+            "status": "pass"
+          },
+          "mono_day_ratio": {
+            "value": 1.0,
+            "threshold_max": 1.0,
+            "status": "pass"
+          },
+          "switch_rate": {
+            "value": 0.0968,
+            "threshold_min": 0.05,
+            "status": "pass"
+          },
+          "max_same_subject_streak_days": {
+            "value": 1.0,
+            "threshold_max": 99,
+            "status": "pass"
+          },
+          "subject_variety_index": {
+            "value": 0.3333,
+            "threshold_min": 0.3,
+            "status": "pass"
+          }
         },
-        "mono_day_ratio": {
-          "value": 0.5,
-          "threshold_max": 1.0,
-          "status": "pass"
-        },
-        "switch_rate": {
-          "value": 0.1613,
-          "threshold_min": 0.05,
-          "status": "pass"
-        },
-        "max_same_subject_streak_days": {
-          "value": 3.0,
-          "threshold_max": 99,
-          "status": "pass"
-        },
-        "subject_variety_index": {
-          "value": 0.5,
-          "threshold_min": 0.3,
-          "status": "pass"
-        }
+        "status": "pass"
+      },
+      "comparison": {
+        "humanity_delta": 0.0,
+        "max_same_subject_streak_days_delta": 0.0,
+        "mono_day_ratio_delta": 0.0
       },
       "status": "pass"
     },
     {
       "scenario": "balanced_diffuse",
       "mode": "balanced",
-      "metrics": {
-        "confidence_score": 0.4659,
-        "humanity_score": 0.7717,
-        "mono_day_ratio": 1.0,
-        "max_same_subject_streak_days": 2.0,
-        "switch_rate": 0.2174,
-        "subject_variety_index": 0.6667
+      "pre_rebalance": {
+        "rebalance_max_swaps": 0,
+        "accepted_swaps": 0,
+        "metrics": {
+          "confidence_score": 0.4659,
+          "humanity_score": 0.7717,
+          "mono_day_ratio": 1.0,
+          "max_same_subject_streak_days": 2.0,
+          "switch_rate": 0.2174,
+          "subject_variety_index": 0.6667
+        },
+        "checks": {
+          "humanity_score": {
+            "value": 0.7717,
+            "threshold_min": 0.55,
+            "status": "pass"
+          },
+          "mono_day_ratio": {
+            "value": 1.0,
+            "threshold_max": 1.0,
+            "status": "pass"
+          },
+          "switch_rate": {
+            "value": 0.2174,
+            "threshold_min": 0.1,
+            "status": "pass"
+          },
+          "max_same_subject_streak_days": {
+            "value": 2.0,
+            "threshold_max": 2,
+            "status": "pass"
+          },
+          "subject_variety_index": {
+            "value": 0.6667,
+            "threshold_min": 0.6,
+            "status": "pass"
+          }
+        },
+        "status": "pass"
       },
-      "checks": {
-        "exit_code": {
-          "value": 0,
-          "expected": 0,
-          "status": "pass"
+      "post_rebalance": {
+        "rebalance_max_swaps": 20,
+        "accepted_swaps": 0,
+        "metrics": {
+          "confidence_score": 0.4659,
+          "humanity_score": 0.7717,
+          "mono_day_ratio": 1.0,
+          "max_same_subject_streak_days": 2.0,
+          "switch_rate": 0.2174,
+          "subject_variety_index": 0.6667
         },
-        "humanity_score": {
-          "value": 0.7717,
-          "threshold_min": 0.55,
-          "status": "pass"
+        "checks": {
+          "humanity_score": {
+            "value": 0.7717,
+            "threshold_min": 0.55,
+            "status": "pass"
+          },
+          "mono_day_ratio": {
+            "value": 1.0,
+            "threshold_max": 1.0,
+            "status": "pass"
+          },
+          "switch_rate": {
+            "value": 0.2174,
+            "threshold_min": 0.1,
+            "status": "pass"
+          },
+          "max_same_subject_streak_days": {
+            "value": 2.0,
+            "threshold_max": 2,
+            "status": "pass"
+          },
+          "subject_variety_index": {
+            "value": 0.6667,
+            "threshold_min": 0.6,
+            "status": "pass"
+          }
         },
-        "mono_day_ratio": {
-          "value": 1.0,
-          "threshold_max": 1.0,
-          "status": "pass"
-        },
-        "switch_rate": {
-          "value": 0.2174,
-          "threshold_min": 0.1,
-          "status": "pass"
-        },
-        "max_same_subject_streak_days": {
-          "value": 2.0,
-          "threshold_max": 2,
-          "status": "pass"
-        },
-        "subject_variety_index": {
-          "value": 0.6667,
-          "threshold_min": 0.6,
-          "status": "pass"
-        }
+        "status": "pass"
+      },
+      "comparison": {
+        "humanity_delta": 0.0,
+        "max_same_subject_streak_days_delta": 0.0,
+        "mono_day_ratio_delta": 0.0
       },
       "status": "pass"
     }
-  ]
+  ],
+  "summary": {
+    "humanity_delta": 0.0,
+    "status": "pass"
+  }
 }
