@@ -106,20 +106,24 @@ def run_planner(payload: dict[str, Any]) -> dict[str, Any]:
         if isinstance(global_config, dict)
         else "hybrid"
     )
-    subject_concentration_mode_by_subject = {
-        sid: cfg.get(
-            "subject_concentration_mode",
-            cfg.get("concentration_mode", default_subject_concentration_mode),
-        )
-        for sid, cfg in config_by_subject.items()
-        if isinstance(sid, str) and isinstance(cfg, dict)
-    }
     strategy_mode_by_subject = {
         sid: str(cfg.get("strategy_mode", default_strategy_mode)).lower()
         for sid, cfg in config_by_subject.items()
         if isinstance(sid, str) and isinstance(cfg, dict)
     }
     subjects = _extract_subjects(payload)
+    concentration_mode_by_subject = {}
+    for subject in subjects:
+        sid = str(subject.get("subject_id", ""))
+        if not sid:
+            continue
+        per_subject_cfg = config_by_subject.get(sid, {})
+        if not isinstance(per_subject_cfg, dict):
+            per_subject_cfg = {}
+        concentration_mode_by_subject[sid] = per_subject_cfg.get(
+            "subject_concentration_mode",
+            per_subject_cfg.get("concentration_mode", default_subject_concentration_mode),
+        )
     manual_sessions = _extract_manual_sessions(payload)
     constraints = _extract_calendar_constraints(payload)
     previous_allocations = _extract_previous_allocations(payload)
@@ -183,10 +187,11 @@ def run_planner(payload: dict[str, Any]) -> dict[str, Any]:
             "max_same_subject_consecutive_blocks": global_config.get("max_same_subject_consecutive_blocks", 3),
             "target_daily_subject_variety": global_config.get("target_daily_subject_variety", 2),
             "human_distribution_strength": global_config.get("human_distribution_strength", 0.3),
+            "default_subject_concentration_mode": default_subject_concentration_mode,
         },
         config_by_subject=config_by_subject,
         strategy_mode_by_subject=strategy_mode_by_subject,
-        subject_concentration_mode_by_subject=subject_concentration_mode_by_subject,
+        concentration_mode_by_subject=concentration_mode_by_subject,
         decision_trace=decision_trace,
     )
 
