@@ -19,6 +19,8 @@
           "s1": {
             "concentration_mode": "diffuse",
             "concentration_origin": "subject_override",
+            "strategy_mode": "hybrid",
+            "strategy_origin": "resolved_override",
             "active_days": 3.0,
             "longest_streak_days": 3.0,
             "max_day_minutes": 210.0,
@@ -27,6 +29,8 @@
           "s2": {
             "concentration_mode": "diffuse",
             "concentration_origin": "subject_override",
+            "strategy_mode": "hybrid",
+            "strategy_origin": "resolved_override",
             "active_days": 4.0,
             "longest_streak_days": 4.0,
             "max_day_minutes": 240.0,
@@ -105,6 +109,8 @@
           "s1": {
             "concentration_mode": "diffuse",
             "concentration_origin": "subject_override",
+            "strategy_mode": "hybrid",
+            "strategy_origin": "resolved_override",
             "active_days": 3.0,
             "longest_streak_days": 3.0,
             "max_day_minutes": 210.0,
@@ -113,6 +119,8 @@
           "s2": {
             "concentration_mode": "diffuse",
             "concentration_origin": "subject_override",
+            "strategy_mode": "hybrid",
+            "strategy_origin": "resolved_override",
             "active_days": 4.0,
             "longest_streak_days": 4.0,
             "max_day_minutes": 240.0,
@@ -179,7 +187,57 @@
       "comparison": {
         "humanity_delta": 0.0,
         "max_same_subject_streak_days_delta": 0.0,
-        "mono_day_ratio_delta": 0.0
+        "mono_day_ratio_delta": 0.0,
+        "subject_indicators": {
+          "per_subject": {
+            "s1": {
+              "concentration_mode": "diffuse",
+              "strategy_mode": "hybrid",
+              "pre": {
+                "active_days": 3.0,
+                "longest_streak_days": 3.0,
+                "clustering_ratio": 0.4375
+              },
+              "post": {
+                "active_days": 3.0,
+                "longest_streak_days": 3.0,
+                "clustering_ratio": 0.4375
+              },
+              "delta": {
+                "active_days": 0.0,
+                "longest_streak_days": 0.0,
+                "clustering_ratio": 0.0
+              }
+            },
+            "s2": {
+              "concentration_mode": "diffuse",
+              "strategy_mode": "hybrid",
+              "pre": {
+                "active_days": 4.0,
+                "longest_streak_days": 4.0,
+                "clustering_ratio": 0.5
+              },
+              "post": {
+                "active_days": 4.0,
+                "longest_streak_days": 4.0,
+                "clustering_ratio": 0.5
+              },
+              "delta": {
+                "active_days": 0.0,
+                "longest_streak_days": 0.0,
+                "clustering_ratio": 0.0
+              }
+            }
+          },
+          "by_mode": {
+            "concentration=diffuse|strategy=hybrid": {
+              "subjects": 2,
+              "avg_delta_active_days": 0.0,
+              "avg_delta_longest_streak_days": 0.0,
+              "avg_delta_clustering_ratio": 0.0
+            }
+          }
+        }
       },
       "status": "pass",
       "quality_status": "fail"
@@ -203,6 +261,8 @@
           "s1": {
             "concentration_mode": "diffuse",
             "concentration_origin": "subject_override",
+            "strategy_mode": "hybrid",
+            "strategy_origin": "resolved_override",
             "active_days": 3.0,
             "longest_streak_days": 2.0,
             "max_day_minutes": 120.0,
@@ -211,6 +271,8 @@
           "s2": {
             "concentration_mode": "diffuse",
             "concentration_origin": "subject_override",
+            "strategy_mode": "hybrid",
+            "strategy_origin": "resolved_override",
             "active_days": 3.0,
             "longest_streak_days": 2.0,
             "max_day_minutes": 120.0,
@@ -289,6 +351,8 @@
           "s1": {
             "concentration_mode": "diffuse",
             "concentration_origin": "subject_override",
+            "strategy_mode": "hybrid",
+            "strategy_origin": "resolved_override",
             "active_days": 3.0,
             "longest_streak_days": 2.0,
             "max_day_minutes": 120.0,
@@ -297,6 +361,8 @@
           "s2": {
             "concentration_mode": "diffuse",
             "concentration_origin": "subject_override",
+            "strategy_mode": "hybrid",
+            "strategy_origin": "resolved_override",
             "active_days": 3.0,
             "longest_streak_days": 2.0,
             "max_day_minutes": 120.0,
@@ -363,7 +429,57 @@
       "comparison": {
         "humanity_delta": 0.0,
         "max_same_subject_streak_days_delta": 0.0,
-        "mono_day_ratio_delta": 0.0
+        "mono_day_ratio_delta": 0.0,
+        "subject_indicators": {
+          "per_subject": {
+            "s1": {
+              "concentration_mode": "diffuse",
+              "strategy_mode": "hybrid",
+              "pre": {
+                "active_days": 3.0,
+                "longest_streak_days": 2.0,
+                "clustering_ratio": 0.3333
+              },
+              "post": {
+                "active_days": 3.0,
+                "longest_streak_days": 2.0,
+                "clustering_ratio": 0.3333
+              },
+              "delta": {
+                "active_days": 0.0,
+                "longest_streak_days": 0.0,
+                "clustering_ratio": 0.0
+              }
+            },
+            "s2": {
+              "concentration_mode": "diffuse",
+              "strategy_mode": "hybrid",
+              "pre": {
+                "active_days": 3.0,
+                "longest_streak_days": 2.0,
+                "clustering_ratio": 0.3333
+              },
+              "post": {
+                "active_days": 3.0,
+                "longest_streak_days": 2.0,
+                "clustering_ratio": 0.3333
+              },
+              "delta": {
+                "active_days": 0.0,
+                "longest_streak_days": 0.0,
+                "clustering_ratio": 0.0
+              }
+            }
+          },
+          "by_mode": {
+            "concentration=diffuse|strategy=hybrid": {
+              "subjects": 2,
+              "avg_delta_active_days": 0.0,
+              "avg_delta_longest_streak_days": 0.0,
+              "avg_delta_clustering_ratio": 0.0
+            }
+          }
+        }
       },
       "status": "pass",
       "quality_status": "fail"
@@ -387,6 +503,8 @@
           "s_focus": {
             "concentration_mode": "concentrated",
             "concentration_origin": "subject_override",
+            "strategy_mode": "hybrid",
+            "strategy_origin": "resolved_override",
             "active_days": 5.0,
             "longest_streak_days": 5.0,
             "max_day_minutes": 210.0,
@@ -395,6 +513,8 @@
           "s_spread_a": {
             "concentration_mode": "diffuse",
             "concentration_origin": "subject_override",
+            "strategy_mode": "hybrid",
+            "strategy_origin": "resolved_override",
             "active_days": 6.0,
             "longest_streak_days": 6.0,
             "max_day_minutes": 240.0,
@@ -473,6 +593,8 @@
           "s_focus": {
             "concentration_mode": "concentrated",
             "concentration_origin": "subject_override",
+            "strategy_mode": "hybrid",
+            "strategy_origin": "resolved_override",
             "active_days": 5.0,
             "longest_streak_days": 5.0,
             "max_day_minutes": 210.0,
@@ -481,6 +603,8 @@
           "s_spread_a": {
             "concentration_mode": "diffuse",
             "concentration_origin": "subject_override",
+            "strategy_mode": "hybrid",
+            "strategy_origin": "resolved_override",
             "active_days": 6.0,
             "longest_streak_days": 6.0,
             "max_day_minutes": 240.0,
@@ -547,7 +671,63 @@
       "comparison": {
         "humanity_delta": 0.0,
         "max_same_subject_streak_days_delta": 0.0,
-        "mono_day_ratio_delta": 0.0
+        "mono_day_ratio_delta": 0.0,
+        "subject_indicators": {
+          "per_subject": {
+            "s_focus": {
+              "concentration_mode": "concentrated",
+              "strategy_mode": "hybrid",
+              "pre": {
+                "active_days": 5.0,
+                "longest_streak_days": 5.0,
+                "clustering_ratio": 0.2333
+              },
+              "post": {
+                "active_days": 5.0,
+                "longest_streak_days": 5.0,
+                "clustering_ratio": 0.2333
+              },
+              "delta": {
+                "active_days": 0.0,
+                "longest_streak_days": 0.0,
+                "clustering_ratio": 0.0
+              }
+            },
+            "s_spread_a": {
+              "concentration_mode": "diffuse",
+              "strategy_mode": "hybrid",
+              "pre": {
+                "active_days": 6.0,
+                "longest_streak_days": 6.0,
+                "clustering_ratio": 0.4444
+              },
+              "post": {
+                "active_days": 6.0,
+                "longest_streak_days": 6.0,
+                "clustering_ratio": 0.4444
+              },
+              "delta": {
+                "active_days": 0.0,
+                "longest_streak_days": 0.0,
+                "clustering_ratio": 0.0
+              }
+            }
+          },
+          "by_mode": {
+            "concentration=concentrated|strategy=hybrid": {
+              "subjects": 1,
+              "avg_delta_active_days": 0.0,
+              "avg_delta_longest_streak_days": 0.0,
+              "avg_delta_clustering_ratio": 0.0
+            },
+            "concentration=diffuse|strategy=hybrid": {
+              "subjects": 1,
+              "avg_delta_active_days": 0.0,
+              "avg_delta_longest_streak_days": 0.0,
+              "avg_delta_clustering_ratio": 0.0
+            }
+          }
+        }
       },
       "status": "pass",
       "quality_status": "fail"

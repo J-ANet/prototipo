@@ -471,6 +471,8 @@ def _subject_indicators(result: dict) -> dict[str, dict[str, float | str]]:
 
     concentration_by_subject: dict[str, str] = {}
     concentration_origin_by_subject: dict[str, str] = {}
+    strategy_by_subject: dict[str, str] = {}
+    strategy_source_by_subject: dict[str, str] = {}
     for item in result.get("decision_trace", []):
         sid = str(item.get("selected_subject_id", ""))
         metadata = item.get("allocation_metadata", {})
@@ -478,6 +480,8 @@ def _subject_indicators(result: dict) -> dict[str, dict[str, float | str]]:
             continue
         concentration_by_subject.setdefault(sid, str(metadata.get("concentration_mode", "")))
         concentration_origin_by_subject.setdefault(sid, str(metadata.get("concentration_origin", "")))
+        strategy_by_subject.setdefault(sid, str(metadata.get("strategy_mode", "")))
+        strategy_source_by_subject.setdefault(sid, str(metadata.get("strategy_mode_source", "")))
 
     indicators: dict[str, dict[str, float | str]] = {}
     for sid, daily in per_subject_minutes_by_day.items():
@@ -498,6 +502,8 @@ def _subject_indicators(result: dict) -> dict[str, dict[str, float | str]]:
         indicators[sid] = {
             "concentration_mode": concentration_by_subject.get(sid, "unknown"),
             "concentration_origin": concentration_origin_by_subject.get(sid, "unknown"),
+            "strategy_mode": strategy_by_subject.get(sid, "unknown"),
+            "strategy_origin": strategy_source_by_subject.get(sid, "unknown"),
             "active_days": float(len(daily)),
             "longest_streak_days": float(longest_streak),
             "max_day_minutes": float(max(daily.values()) if daily else 0),
@@ -540,9 +546,79 @@ def _run_single(case: dict, *, rebalance_max_swaps: int) -> dict:
     }
 
 
+def _subject_indicator_comparison(pre: dict, post: dict) -> dict:
+    pre_subjects = pre.get("subject_indicators", {})
+    post_subjects = post.get("subject_indicators", {})
+    subject_ids = sorted(set(pre_subjects.keys()) | set(post_subjects.keys()))
+
+    per_subject: dict[str, dict] = {}
+    by_mode: dict[str, dict[str, float | int]] = {}
+    for sid in subject_ids:
+        pre_item = pre_subjects.get(sid, {})
+        post_item = post_subjects.get(sid, {})
+
+        concentration_mode = str(post_item.get("concentration_mode") or pre_item.get("concentration_mode") or "unknown")
+        strategy_mode = str(post_item.get("strategy_mode") or pre_item.get("strategy_mode") or "unknown")
+        mode_key = f"concentration={concentration_mode}|strategy={strategy_mode}"
+
+        deltas = {
+            "active_days": round(float(post_item.get("active_days", 0.0)) - float(pre_item.get("active_days", 0.0)), 4),
+            "longest_streak_days": round(
+                float(post_item.get("longest_streak_days", 0.0)) - float(pre_item.get("longest_streak_days", 0.0)), 4
+            ),
+            "clustering_ratio": round(float(post_item.get("clustering_ratio", 0.0)) - float(pre_item.get("clustering_ratio", 0.0)), 4),
+        }
+
+        per_subject[sid] = {
+            "concentration_mode": concentration_mode,
+            "strategy_mode": strategy_mode,
+            "pre": {
+                "active_days": round(float(pre_item.get("active_days", 0.0)), 4),
+                "longest_streak_days": round(float(pre_item.get("longest_streak_days", 0.0)), 4),
+                "clustering_ratio": round(float(pre_item.get("clustering_ratio", 0.0)), 4),
+            },
+            "post": {
+                "active_days": round(float(post_item.get("active_days", 0.0)), 4),
+                "longest_streak_days": round(float(post_item.get("longest_streak_days", 0.0)), 4),
+                "clustering_ratio": round(float(post_item.get("clustering_ratio", 0.0)), 4),
+            },
+            "delta": deltas,
+        }
+
+        bucket = by_mode.setdefault(
+            mode_key,
+            {
+                "subjects": 0,
+                "delta_active_days": 0.0,
+                "delta_longest_streak_days": 0.0,
+                "delta_clustering_ratio": 0.0,
+            },
+        )
+        bucket["subjects"] += 1
+        bucket["delta_active_days"] += deltas["active_days"]
+        bucket["delta_longest_streak_days"] += deltas["longest_streak_days"]
+        bucket["delta_clustering_ratio"] += deltas["clustering_ratio"]
+
+    by_mode_avg = {
+        key: {
+            "subjects": int(item["subjects"]),
+            "avg_delta_active_days": round(float(item["delta_active_days"]) / max(1, int(item["subjects"])), 4),
+            "avg_delta_longest_streak_days": round(
+                float(item["delta_longest_streak_days"]) / max(1, int(item["subjects"])), 4
+            ),
+            "avg_delta_clustering_ratio": round(
+                float(item["delta_clustering_ratio"]) / max(1, int(item["subjects"])), 4
+            ),
+        }
+        for key, item in by_mode.items()
+    }
+    return {"per_subject": per_subject, "by_mode": by_mode_avg}
+
+
 def _run_case(case: dict) -> dict:
     pre = _run_single(case, rebalance_max_swaps=0)
     post = _run_single(case, rebalance_max_swaps=int(case.get("rebalance_max_swaps", 100)))
+    subject_comparison = _subject_indicator_comparison(pre, post)
 
     return {
         "scenario": case["name"],
@@ -556,6 +632,7 @@ def _run_case(case: dict) -> dict:
                 post["metrics"]["max_same_subject_streak_days"] - pre["metrics"]["max_same_subject_streak_days"], 4
             ),
             "mono_day_ratio_delta": round(post["metrics"]["mono_day_ratio"] - pre["metrics"]["mono_day_ratio"], 4),
+            "subject_indicators": subject_comparison,
         },
         "status": "pass" if pre["status"] == "pass" and post["status"] == "pass" else "fail",
         "quality_status": "pass" if pre["quality_status"] == "pass" and post["quality_status"] == "pass" else "fail",

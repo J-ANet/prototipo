@@ -232,6 +232,15 @@ def _daily_base_minutes(plan: list[dict], subject_id: str) -> dict[str, int]:
     return daily
 
 
+def _base_trace_for_subject(result: dict, subject_id: str) -> list[dict]:
+    return [
+        item
+        for item in result.get("decision_trace", [])
+        if item.get("selected_subject_id") == subject_id
+        and item.get("allocation_metadata", {}).get("phase") == "base"
+    ]
+
+
 def test_distribution_limit_reduces_same_day_monotone_sequences_without_losing_feasibility() -> None:
     payload = {
         "effective_config": {
@@ -668,6 +677,133 @@ def test_subject_concentration_mixed_overrides_emit_trace_metadata_and_distinct_
 
     assert algebra_stats["avg_day_index"] <= stats_by_subject["history"]["avg_day_index"]
     assert algebra_stats["max_block_minutes"] >= stats_by_subject["history"]["max_block_minutes"]
+
+
+def test_multisubject_overrides_change_allocation_decisions_beyond_resolved_config() -> None:
+    payload = {
+        "effective_config": {
+            "global": {
+                "daily_cap_minutes": 180,
+                "daily_cap_tolerance_minutes": 0,
+                "subject_buffer_percent": 0.1,
+                "critical_but_possible_threshold": 0.8,
+                "study_on_exam_day": True,
+                "max_subjects_per_day": 3,
+                "session_duration_minutes": 30,
+                "sleep_hours_per_day": 8,
+                "pomodoro_enabled": False,
+                "stability_vs_recovery": 0.4,
+                "default_strategy_mode": "backward",
+                "human_distribution_mode": "off",
+                "subject_concentration_mode": "diffuse",
+            },
+            "by_subject": {
+                "calc": {"strategy_mode": "forward", "subject_concentration_mode": "concentrated"},
+                "history": {"strategy_mode": "backward", "subject_concentration_mode": "diffuse"},
+                "chem": {"strategy_mode": "forward", "subject_concentration_mode": "diffuse"},
+            },
+        },
+        "subjects": {
+            "subjects": [
+                {
+                    "subject_id": "calc",
+                    "priority": 3,
+                    "cfu": 0.24,
+                    "difficulty_coeff": 1,
+                    "completion_initial": 0,
+                    "attending": False,
+                    "exam_dates": ["2026-01-08"],
+                    "selected_exam_date": "2026-01-08",
+                    "start_at": "2026-01-01",
+                    "end_by": "2026-01-08",
+                },
+                {
+                    "subject_id": "history",
+                    "priority": 3,
+                    "cfu": 0.24,
+                    "difficulty_coeff": 1,
+                    "completion_initial": 0,
+                    "attending": False,
+                    "exam_dates": ["2026-01-08"],
+                    "selected_exam_date": "2026-01-08",
+                    "start_at": "2026-01-01",
+                    "end_by": "2026-01-08",
+                },
+                {
+                    "subject_id": "chem",
+                    "priority": 3,
+                    "cfu": 0.24,
+                    "difficulty_coeff": 1,
+                    "completion_initial": 0,
+                    "attending": False,
+                    "exam_dates": ["2026-01-08"],
+                    "selected_exam_date": "2026-01-08",
+                    "start_at": "2026-01-01",
+                    "end_by": "2026-01-08",
+                },
+            ]
+        },
+        "global_config": {
+            "daily_cap_minutes": 180,
+            "daily_cap_tolerance_minutes": 0,
+            "subject_buffer_percent": 0.1,
+            "session_duration_minutes": 30,
+            "default_strategy_mode": "backward",
+            "subject_concentration_mode": "diffuse",
+        },
+        "calendar_constraints": {"constraints": []},
+        "manual_sessions": {"manual_sessions": []},
+    }
+
+    result = run_planner(payload)
+
+    by_subject = {
+        sid: _base_trace_for_subject(result, sid)
+        for sid in ["calc", "history", "chem"]
+    }
+    for sid, trace_items in by_subject.items():
+        assert trace_items, f"trace base vuoto per {sid}"
+
+    assert all(
+        item.get("allocation_metadata", {}).get("strategy_mode") == "forward"
+        and item.get("allocation_metadata", {}).get("strategy_mode_source") in {"subject_override", "resolved_override"}
+        and item.get("allocation_metadata", {}).get("concentration_mode") == "concentrated"
+        and item.get("allocation_metadata", {}).get("concentration_origin") == "subject_override"
+        for item in by_subject["calc"]
+    )
+    assert all(
+        item.get("allocation_metadata", {}).get("strategy_mode") == "backward"
+        and item.get("allocation_metadata", {}).get("strategy_mode_source") in {"subject_override", "resolved_override"}
+        and item.get("allocation_metadata", {}).get("concentration_mode") == "diffuse"
+        and item.get("allocation_metadata", {}).get("concentration_origin") == "subject_override"
+        for item in by_subject["history"]
+    )
+
+    assert any("RULE_STRATEGY_FORWARD" in item.get("applied_rules", []) for item in by_subject["calc"])
+    assert any("RULE_STRATEGY_BACKWARD" in item.get("applied_rules", []) for item in by_subject["history"])
+
+    baseline_payload = json.loads(json.dumps(payload))
+    baseline_payload["effective_config"]["by_subject"] = {}
+    baseline_result = run_planner(baseline_payload)
+
+    comparable_subjects = [
+        sid
+        for sid in ["calc", "history", "chem"]
+        if any(item.get("subject_id") == sid and item.get("bucket") == "base" for item in result["plan"])
+        and any(item.get("subject_id") == sid and item.get("bucket") == "base" for item in baseline_result["plan"])
+    ]
+    assert comparable_subjects
+
+    stats = {sid: _subject_distribution_stats(result["plan"], sid) for sid in comparable_subjects}
+    baseline_stats = {sid: _subject_distribution_stats(baseline_result["plan"], sid) for sid in comparable_subjects}
+
+    changed_subjects = [
+        sid
+        for sid in comparable_subjects
+        if stats[sid]["avg_day_index"] != baseline_stats[sid]["avg_day_index"]
+        or stats[sid]["active_days"] != baseline_stats[sid]["active_days"]
+    ]
+    assert changed_subjects
 
 
 def test_concentration_mode_invalid_override_uses_concentrated_deterministic_fallback() -> None:

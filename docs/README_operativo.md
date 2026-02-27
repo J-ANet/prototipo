@@ -179,6 +179,47 @@ Il testo mostrato per ogni scenario riporta sempre il delta reale (`Δ`) e la di
 
 ---
 
+
+## Come leggere gli indicatori per-subject (audit pratico)
+
+Nel report smoke (`results/realistic_smoke/realism_checks.json`) ogni scenario contiene, per fase `pre_rebalance` e `post_rebalance`, la sezione:
+
+- `subject_indicators`: indicatori per singola materia.
+- `comparison.subject_indicators.per_subject`: confronto diretto pre/post per materia.
+- `comparison.subject_indicators.by_mode`: delta medi raggruppati per modalità (`concentration_mode` + `strategy_mode`).
+
+### Indicatori principali per materia
+
+- `clustering_ratio` (0-1): quota del carico materia concentrata nel giorno più carico.
+  - alto = materia più "clusterizzata" su pochi giorni;
+  - basso = distribuzione più diffusa.
+- `longest_streak_days`: lunghezza massima della striscia di giorni consecutivi in cui la materia è presente.
+- `active_days`: numero di giorni in cui la materia ha almeno un blocco `base`.
+
+### Lettura pre/post
+
+Per ogni materia, confronta sempre:
+
+- `pre.<metrica>` vs `post.<metrica>`;
+- `delta.<metrica>` (`post - pre`).
+
+Regola rapida di interpretazione:
+
+- `delta_clustering_ratio > 0`: più concentrazione post-rebalance;
+- `delta_longest_streak_days > 0`: streak più lunga post-rebalance;
+- `delta_active_days > 0`: materia spalmata su più giorni post-rebalance.
+
+### Audit per modalità
+
+La sezione `by_mode` aggrega i delta medi per bucket di modalità (es. `concentration=diffuse|strategy=backward`):
+
+- utile per verificare se un certo mix di policy produce sempre lo stesso effetto;
+- utile per confrontare rapidamente gruppi omogenei senza leggere materia per materia.
+
+In audit operativo: prima verifica le anomalie su `per_subject`, poi conferma se il pattern è sistematico su `by_mode`.
+
+---
+
 ## Esempi JSON completi
 
 ### A) Piano concentrato
