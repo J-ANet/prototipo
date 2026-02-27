@@ -119,6 +119,35 @@ def _current_streak_days(subject_id: str, day: str | date, minutes_by_day: dict[
             continue
         return streak
 
+
+def _strategy_weight(subject_id: str, slot_date: str | date, exam_day: date, mode: str) -> float:
+    """Return multiplicative weight from strategy mode and temporal distance to exam."""
+    _ = subject_id
+    day = _to_date(slot_date)
+    days_to_exam = max(0, (exam_day - day).days)
+    distance = float(days_to_exam)
+    near_ratio = 1.0 / (1.0 + distance)
+    far_ratio = distance / (distance + 2.0)
+
+    normalized_mode = str(mode or "hybrid").lower()
+    if normalized_mode == "forward":
+        # More bonus when far from exam.
+        return 1.0 + 0.40 * far_ratio
+    if normalized_mode == "backward":
+        # More bonus when close to exam.
+        return 1.0 + 0.45 * near_ratio
+    # Hybrid: mostly neutral, slight acceleration close to exam.
+    return 1.0 + 0.15 * near_ratio
+
+
+def _strategy_rule(mode: str) -> str:
+    normalized_mode = str(mode or "hybrid").lower()
+    if normalized_mode == "forward":
+        return "RULE_STRATEGY_MODE_FORWARD"
+    if normalized_mode == "backward":
+        return "RULE_STRATEGY_MODE_BACKWARD"
+    return "RULE_STRATEGY_MODE_HYBRID"
+
 def allocate_plan(
     *,
     slots: list[dict[str, Any]],
@@ -164,6 +193,12 @@ def allocate_plan(
             global_distribution,
             config_by_subject or {},
         )
+        for subject in ordered_subjects
+    }
+    strategy_mode_by_subject = {
+        str(subject.get("subject_id", "")): str(
+            (config_by_subject or {}).get(str(subject.get("subject_id", "")), {}).get("strategy_mode", "hybrid")
+        ).lower()
         for subject in ordered_subjects
     }
     day_subject_set: dict[date, set[str]] = defaultdict(set)
@@ -226,7 +261,18 @@ def allocate_plan(
                     - len(unique_subjects_today | {sid}),
                 )
                 soft_penalty = float(dist_cfg.get("penalty_multiplier", 0.0)) * float(variety_missing) * 0.25
-                score = compute_score({**features, "streak_penalty": continuity_penalty + soft_penalty})
+                base_score = compute_score({**features, "streak_penalty": continuity_penalty + soft_penalty})
+                strategy_mode = strategy_mode_by_subject.get(sid, "hybrid")
+                strategy_weight = _strategy_weight(
+                    subject_id=sid,
+                    slot_date=slot["date"],
+                    exam_day=exam_day_by_subject[sid],
+                    mode=strategy_mode,
+                )
+                # Keep Phase 1 mostly neutral for hybrid.
+                if strategy_mode == "hybrid":
+                    strategy_weight = 1.0 + (strategy_weight - 1.0) * 0.25
+                score = base_score * strategy_weight
                 tie = deterministic_tie_breaker_key(subject, reference_day=slot["date"])
                 candidates.append((score, tie, subject))
 
@@ -259,6 +305,7 @@ def allocate_plan(
             _alloc_chunk(subject_id=sid, slot=slot, minutes=chunk, bucket="base", out=allocations)
             if decision_trace is not None:
                 applied_rules = ["RULE_BASE_BEFORE_BUFFER", "RULE_SCORE_ORDER", "RULE_TIE_BREAK_DETERMINISTIC"]
+                applied_rules.append(_strategy_rule(strategy_mode_by_subject.get(sid, "hybrid")))
                 if forced_second_choice:
                     applied_rules.append("RULE_LIMIT_CONSECUTIVE_BLOCKS")
                 decision_trace.record(
@@ -284,7 +331,7 @@ def allocate_plan(
             continue
         day = _to_date(slot["date"])
 
-        candidates: list[dict[str, Any]] = []
+        candidates: list[tuple[float, tuple[int, int, str], dict[str, Any]]] = []
         for subject in _subject_order(ordered_subjects, slot["date"]):
             sid = str(subject["subject_id"])
             if remaining_base[sid] > 0:  # never invert base -> buffer
@@ -293,9 +340,20 @@ def allocate_plan(
                 continue
             if day > exam_day_by_subject[sid]:
                 continue
-            candidates.append(subject)
+            strategy_mode = strategy_mode_by_subject.get(sid, "hybrid")
+            strategy_weight = _strategy_weight(
+                subject_id=sid,
+                slot_date=slot["date"],
+                exam_day=exam_day_by_subject[sid],
+                mode=strategy_mode,
+            )
+            tie = deterministic_tie_breaker_key(subject, reference_day=slot["date"])
+            candidates.append((strategy_weight, tie, subject))
 
-        for subject in candidates:
+        candidates.sort(key=lambda item: (-item[0], item[1]))
+
+        for weighted_candidate in candidates:
+            subject = weighted_candidate[2]
             sid = str(subject["subject_id"])
             if free_minutes < session_minutes:
                 break
@@ -304,10 +362,14 @@ def allocate_plan(
             if decision_trace is not None:
                 decision_trace.record(
                     slot_id=str(slot["slot_id"]),
-                    candidate_subjects=[str(item["subject_id"]) for item in candidates],
-                    scores_by_subject={str(item["subject_id"]): 1.0 for item in candidates},
+                    candidate_subjects=[str(item[2]["subject_id"]) for item in candidates],
+                    scores_by_subject={str(item[2]["subject_id"]): float(item[0]) for item in candidates},
                     selected_subject_id=sid,
-                    applied_rules=["RULE_PRE_EXAM_BUFFER", "RULE_BASE_BEFORE_BUFFER"],
+                    applied_rules=[
+                        "RULE_PRE_EXAM_BUFFER",
+                        "RULE_BASE_BEFORE_BUFFER",
+                        _strategy_rule(strategy_mode_by_subject.get(sid, "hybrid")),
+                    ],
                     blocked_constraints=[],
                     tradeoff_note="Allocato buffer su materia con base completata e prima dell'esame.",
                     confidence_impact=0.005,
@@ -324,21 +386,43 @@ def allocate_plan(
         if free_minutes <= 0:
             continue
 
+        candidates: list[tuple[float, tuple[int, int, str], dict[str, Any]]] = []
         for subject in _subject_order(ordered_subjects, slot["date"]):
             sid = str(subject["subject_id"])
             if remaining_base[sid] > 0:  # never invert base -> buffer
                 continue
             if remaining_buffer[sid] <= 0 or free_minutes < session_minutes:
                 continue
+            strategy_mode = strategy_mode_by_subject.get(sid, "hybrid")
+            strategy_weight = _strategy_weight(
+                subject_id=sid,
+                slot_date=slot["date"],
+                exam_day=exam_day_by_subject[sid],
+                mode=strategy_mode,
+            )
+            tie = deterministic_tie_breaker_key(subject, reference_day=slot["date"])
+            candidates.append((strategy_weight, tie, subject))
+
+        candidates.sort(key=lambda item: (-item[0], item[1]))
+
+        for weighted_candidate in candidates:
+            subject = weighted_candidate[2]
+            sid = str(subject["subject_id"])
+            if free_minutes < session_minutes:
+                continue
             chunk = min(session_minutes, free_minutes, remaining_buffer[sid])
             _alloc_chunk(subject_id=sid, slot=slot, minutes=chunk, bucket="buffer", out=allocations)
             if decision_trace is not None:
                 decision_trace.record(
                     slot_id=str(slot["slot_id"]),
-                    candidate_subjects=[str(item.get("subject_id", "")) for item in _subject_order(ordered_subjects, slot["date"])],
-                    scores_by_subject={sid: 1.0},
+                    candidate_subjects=[str(item[2].get("subject_id", "")) for item in candidates],
+                    scores_by_subject={str(item[2].get("subject_id", "")): float(item[0]) for item in candidates},
                     selected_subject_id=sid,
-                    applied_rules=["RULE_GAP_FILL_BUFFER", "RULE_BASE_BEFORE_BUFFER"],
+                    applied_rules=[
+                        "RULE_GAP_FILL_BUFFER",
+                        "RULE_BASE_BEFORE_BUFFER",
+                        _strategy_rule(strategy_mode_by_subject.get(sid, "hybrid")),
+                    ],
                     blocked_constraints=[],
                     tradeoff_note="Riempimento gap con buffer disponibile.",
                     confidence_impact=0.002,
