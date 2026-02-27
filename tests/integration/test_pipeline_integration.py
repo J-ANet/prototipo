@@ -94,6 +94,7 @@ def test_end_to_end_pipeline_plan_request_to_plan_output(tmp_path: Path) -> None
     assert payload["status"] == "ok"
     assert "plan_output" in payload
     assert payload["plan_output"]["validation_report"]["errors"] == []
+    assert json.dumps(payload["plan_output"]["decision_trace"])
 
 
 def test_plan_command_emits_decision_trace_allocation_metadata(tmp_path: Path) -> None:

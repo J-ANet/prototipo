@@ -70,6 +70,20 @@ def _run_cli(tmp_path: Path, *, global_config: dict, subjects: dict, constraints
     return payload
 
 
+def _assert_schema_validation_failure(payload: dict, *, expected_code: str) -> None:
+    assert payload["_exit_code"] == 2
+    assert payload.get("status") == "error"
+    assert payload.get("error", {}).get("code") == "validation_error"
+    report_errors = payload.get("validation_report", {}).get("errors", [])
+    assert any(item.get("code") == expected_code for item in report_errors)
+
+
+def _assert_planner_success(payload: dict) -> None:
+    assert payload["_exit_code"] == 0
+    assert payload.get("status") == "ok"
+    assert payload.get("plan_output", {}).get("validation_report", {}).get("errors", []) == []
+
+
 def test_smoke_scenario_1_base_plan_feasible(tmp_path: Path) -> None:
     payload = _run_cli(
         tmp_path,
@@ -87,7 +101,7 @@ def test_smoke_scenario_1_base_plan_feasible(tmp_path: Path) -> None:
         constraints={"constraints": []},
         manual_sessions={"schema_version": "1.0", "manual_sessions": []},
     )
-    assert payload["_exit_code"] == 0
+    _assert_planner_success(payload)
     schema_report = validate_plan_output_with_schema(payload["plan_output"])
     assert schema_report.errors == []
 
@@ -115,7 +129,7 @@ def test_smoke_scenario_2_buffer_not_allocable_warning(tmp_path: Path) -> None:
         constraints={"constraints": []},
         manual_sessions={"schema_version": "1.0", "manual_sessions": []},
     )
-    assert payload["_exit_code"] == 0
+    _assert_planner_success(payload)
     warning_codes = {w["code"] for w in payload["plan_output"]["warnings"]}
     assert "WARN_BUFFER_NOT_ALLOCABLE" in warning_codes
     assert payload["metrics"]["coverage_subject"] >= payload["plan_output"]["effective_config"]["global"]["critical_but_possible_threshold"]
@@ -139,7 +153,7 @@ def test_smoke_scenario_3_invalid_override_key(tmp_path: Path) -> None:
         constraints={"constraints": []},
         manual_sessions={"schema_version": "1.0", "manual_sessions": []},
     )
-    assert payload["_exit_code"] == 2
+    _assert_schema_validation_failure(payload, expected_code="INVALID_OVERRIDE_KEY")
     errors = payload["validation_report"]["errors"]
     assert any(e["code"] == "INVALID_OVERRIDE_KEY" and e.get("field_path") and e.get("suggested_fix") for e in errors)
 
@@ -161,7 +175,7 @@ def test_smoke_scenario_4_invalid_pomodoro(tmp_path: Path) -> None:
         constraints={"constraints": []},
         manual_sessions={"schema_version": "1.0", "manual_sessions": []},
     )
-    assert payload["_exit_code"] == 2
+    _assert_schema_validation_failure(payload, expected_code="INVALID_POMODORO_CONFIG")
     assert any(e["code"] == "INVALID_POMODORO_CONFIG" for e in payload["validation_report"]["errors"])
 
 
@@ -265,8 +279,8 @@ def test_smoke_scenario_6_monotony_improves_with_balanced_mode(tmp_path: Path) -
         manual_sessions={"schema_version": "1.0", "manual_sessions": []},
     )
 
-    assert off_payload["_exit_code"] == 0
-    assert balanced_payload["_exit_code"] == 0
+    _assert_planner_success(off_payload)
+    _assert_planner_success(balanced_payload)
 
     assert 0.0 <= off_payload["metrics"]["humanity_score"] <= 1.0
     assert 0.0 <= balanced_payload["metrics"]["humanity_score"] <= 1.0
