@@ -113,3 +113,52 @@ def test_session_status_coherence() -> None:
     ]
     report = validate_domain_inputs(loaded)
     assert report.errors == []
+
+
+def test_determinism_holds_with_rebalance_enabled() -> None:
+    payload = _payload()
+    payload["global_config"]["rebalance_max_swaps"] = 20
+    payload["global_config"]["rebalance_near_days_window"] = 4
+    payload["subjects"]["subjects"] = [
+        {
+            "subject_id": "s1",
+            "name": "S1",
+            "cfu": 1,
+            "difficulty_coeff": 1,
+            "priority": 2,
+            "completion_initial": 0,
+            "attending": False,
+            "exam_dates": ["2026-01-05"],
+            "selected_exam_date": "2026-01-05",
+            "start_at": "2026-01-01",
+            "end_by": "2026-01-05",
+        },
+        {
+            "subject_id": "s2",
+            "name": "S2",
+            "cfu": 1,
+            "difficulty_coeff": 1,
+            "priority": 2,
+            "completion_initial": 0,
+            "attending": False,
+            "exam_dates": ["2026-01-05"],
+            "selected_exam_date": "2026-01-05",
+            "start_at": "2026-01-01",
+            "end_by": "2026-01-05",
+        },
+    ]
+    payload["effective_config"] = resolve_effective_config(payload, ValidationReport())
+
+    result1 = run_planner(deepcopy(payload))
+    result2 = run_planner(deepcopy(payload))
+
+    assert result1["plan"] == result2["plan"]
+
+    def _normalize_trace(trace: list[dict]) -> list[dict]:
+        return [
+            {k: v for k, v in item.items() if k not in {"timestamp", "decision_id"}}
+            for item in trace
+        ]
+
+    assert _normalize_trace(result1["decision_trace"]) == _normalize_trace(result2["decision_trace"])
+    assert result1["plan_summary"] == result2["plan_summary"]
