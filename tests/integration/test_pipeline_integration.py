@@ -208,6 +208,16 @@ def _subject_distribution_stats(plan: list[dict], subject_id: str) -> dict[str, 
     }
 
 
+def _daily_base_minutes(plan: list[dict], subject_id: str) -> dict[str, int]:
+    daily: dict[str, int] = {}
+    for item in plan:
+        if item.get("subject_id") != subject_id or item.get("bucket") != "base":
+            continue
+        day = str(item.get("date"))
+        daily[day] = daily.get(day, 0) + int(item.get("minutes", 0) or 0)
+    return daily
+
+
 def test_distribution_limit_reduces_same_day_monotone_sequences_without_losing_feasibility() -> None:
     payload = {
         "effective_config": {
@@ -797,3 +807,81 @@ def test_forward_vs_backward_has_quantitative_monotonicity_and_streak_difference
     assert forward_stats["active_days"] <= backward_stats["active_days"]
     assert forward_stats["longest_day_streak"] <= backward_stats["longest_day_streak"]
     assert forward_stats["max_block_minutes"] == backward_stats["max_block_minutes"]
+
+
+def test_phase1_forward_vs_backward_changes_candidate_timing_with_same_input() -> None:
+    payload = {
+        "effective_config": {
+            "global": {
+                "daily_cap_minutes": 120,
+                "daily_cap_tolerance_minutes": 0,
+                "subject_buffer_percent": 0.2,
+                "critical_but_possible_threshold": 0.8,
+                "study_on_exam_day": True,
+                "max_subjects_per_day": 2,
+                "session_duration_minutes": 30,
+                "sleep_hours_per_day": 8,
+                "pomodoro_enabled": False,
+                "stability_vs_recovery": 0.4,
+                "default_strategy_mode": "hybrid",
+                "human_distribution_mode": "off",
+            },
+            "by_subject": {
+                "target": {"strategy_mode": "forward"},
+                "peer": {"strategy_mode": "hybrid"},
+            },
+        },
+        "subjects": {
+            "subjects": [
+                {
+                    "subject_id": "target",
+                    "priority": 2,
+                    "cfu": 0.24,
+                    "difficulty_coeff": 1,
+                    "completion_initial": 0,
+                    "attending": False,
+                    "exam_dates": ["2026-01-07"],
+                    "selected_exam_date": "2026-01-07",
+                    "start_at": "2026-01-01",
+                    "end_by": "2026-01-07",
+                },
+                {
+                    "subject_id": "peer",
+                    "priority": 2,
+                    "cfu": 0.24,
+                    "difficulty_coeff": 1,
+                    "completion_initial": 0,
+                    "attending": False,
+                    "exam_dates": ["2026-01-07"],
+                    "selected_exam_date": "2026-01-07",
+                    "start_at": "2026-01-01",
+                    "end_by": "2026-01-07",
+                },
+            ]
+        },
+        "global_config": {
+            "daily_cap_minutes": 120,
+            "daily_cap_tolerance_minutes": 0,
+            "subject_buffer_percent": 0.2,
+            "session_duration_minutes": 30,
+            "default_strategy_mode": "hybrid",
+        },
+        "calendar_constraints": {"constraints": []},
+        "manual_sessions": {"manual_sessions": []},
+    }
+
+    forward_result = run_planner(payload)
+
+    payload["effective_config"]["by_subject"]["target"]["strategy_mode"] = "backward"
+    backward_result = run_planner(payload)
+
+    assert forward_result["plan"] != backward_result["plan"]
+    assert _avg_base_day_index(forward_result["plan"], "target") < _avg_base_day_index(backward_result["plan"], "target")
+
+    forward_daily = _daily_base_minutes(forward_result["plan"], "target")
+    backward_daily = _daily_base_minutes(backward_result["plan"], "target")
+    assert forward_daily.get("2026-01-01", 0) > backward_daily.get("2026-01-01", 0)
+    assert forward_daily.get("2026-01-07", 0) < backward_daily.get("2026-01-07", 0)
+
+    assert any("RULE_STRATEGY_FORWARD" in item.get("applied_rules", []) for item in forward_result["decision_trace"])
+    assert any("RULE_STRATEGY_BACKWARD" in item.get("applied_rules", []) for item in backward_result["decision_trace"])

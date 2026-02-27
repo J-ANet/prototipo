@@ -178,6 +178,34 @@ def _progress_in_horizon(day: date, start_day: date, anchor_day: date) -> float:
     return float((clamped - start_day).days) / float(total)
 
 
+def _strategy_bias(
+    mode: str,
+    day: str | date,
+    start_at: date,
+    end_by: date,
+    exam_date: date,
+    phase: str = "base",
+) -> float:
+    slot_day = _to_date(day)
+    anchor_day = max(start_at, min(end_by, exam_date))
+    progress = _progress_in_horizon(slot_day, start_at, anchor_day)
+    early_ratio = 1.0 - progress
+    near_exam_ratio = progress
+
+    normalized_mode = str(mode or "hybrid").lower()
+    normalized_phase = str(phase or "base").lower()
+
+    if normalized_mode == "forward":
+        return 1.0 + (0.80 if normalized_phase == "base" else 0.45) * early_ratio
+    if normalized_mode == "backward":
+        return 1.0 + (0.80 if normalized_phase == "base" else 0.70) * near_exam_ratio
+
+    # Hybrid: base remains almost flat, buffer receives a mild near-exam acceleration.
+    if normalized_phase == "base":
+        return 1.0
+    return 1.0 + 0.20 * near_exam_ratio
+
+
 def _strategy_weight(
     *,
     day: str | date,
@@ -186,28 +214,14 @@ def _strategy_weight(
     horizon_end: date,
     phase: str,
 ) -> float:
-    slot_day = _to_date(day)
-    progress = _progress_in_horizon(slot_day, horizon_start, horizon_end)
-    early_ratio = 1.0 - progress
-    near_exam_ratio = progress
-
-    normalized_mode = str(mode or "hybrid").lower()
-    normalized_phase = str(phase or "base").lower()
-
-    if normalized_mode == "forward":
-        if normalized_phase == "base":
-            return 1.0 + 1.20 * early_ratio
-        return 1.0 + 0.60 * early_ratio
-    if normalized_mode == "backward":
-        if normalized_phase == "base":
-            return 1.0 + 1.20 * near_exam_ratio
-        return 1.0 + 1.00 * near_exam_ratio
-
-    # Hybrid: base prefers distributed allocation, while buffer gets an exam-proximity bias.
-    if normalized_phase == "base":
-        mid_peak = 1.0 - abs(progress - 0.5) * 2.0
-        return 1.0 + 0.04 * mid_peak + 0.03 * near_exam_ratio
-    return 1.0 + 0.35 * near_exam_ratio + 0.05 * early_ratio
+    return _strategy_bias(
+        mode=mode,
+        day=day,
+        start_at=horizon_start,
+        end_by=horizon_end,
+        exam_date=horizon_end,
+        phase=phase,
+    )
 
 
 def _strategy_rule(mode: str) -> str:
@@ -421,11 +435,12 @@ def allocate_plan(
                     }
                 )
                 strategy_mode = effective_strategy_mode_by_subject.get(sid, "hybrid")
-                strategy_weight = _strategy_weight(
-                    day=slot["date"],
+                strategy_weight = _strategy_bias(
                     mode=strategy_mode,
-                    horizon_start=horizon_start_by_subject[sid],
-                    horizon_end=horizon_end_by_subject[sid],
+                    day=slot["date"],
+                    start_at=horizon_start_by_subject[sid],
+                    end_by=_to_date(subject.get("end_by", horizon_end_by_subject[sid])),
+                    exam_date=exam_day_by_subject[sid],
                     phase="base",
                 )
                 concentration_multiplier = _concentration_multiplier(concentration_mode)
