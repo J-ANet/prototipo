@@ -124,6 +124,28 @@ def _respects_max_subjects_per_day(allocations: list[dict[str, Any]], max_subjec
     return all(len(subjects) <= max_subjects_per_day for subjects in per_day_subjects.values())
 
 
+def _respects_base_before_buffer(
+    allocations: list[dict[str, Any]],
+    remaining_base_minutes: dict[str, int] | None,
+) -> bool:
+    if not isinstance(remaining_base_minutes, dict):
+        return True
+
+    subjects_with_buffer: set[str] = set()
+    for alloc in allocations:
+        if str(alloc.get("bucket", "")) != "buffer":
+            continue
+        sid = str(alloc.get("subject_id", ""))
+        if sid in {"", "__slack__"}:
+            continue
+        subjects_with_buffer.add(sid)
+
+    for sid in subjects_with_buffer:
+        if int(remaining_base_minutes.get(sid, 0) or 0) > 0:
+            return False
+    return True
+
+
 def _humanity_vector(allocations: list[dict[str, Any]]) -> dict[str, float]:
     metrics = compute_humanity_metrics(allocations)
     return {
@@ -177,6 +199,7 @@ def rebalance_allocations(
     near_days_window: int = 2,
     feasibility_regression_tolerance: float = 0.0,
     locked_allocations: list[dict[str, Any]] | None = None,
+    remaining_base_minutes: dict[str, int] | None = None,
 ) -> list[dict[str, Any]]:
     """Rebalance using deterministic compatible swaps preserving feasibility."""
     working = [dict(item) for item in allocations]
@@ -267,6 +290,8 @@ def rebalance_allocations(
             proposal[idx_b]["subject_id"] = subject_a
 
             if not _respects_max_subjects_per_day(proposal, max_subjects_per_day=max_subjects_per_day):
+                continue
+            if not _respects_base_before_buffer(proposal, remaining_base_minutes):
                 continue
 
             proposal_feasibility = _feasibility_score(proposal, allowed_minutes_by_day=allowed, subject_windows=windows)
