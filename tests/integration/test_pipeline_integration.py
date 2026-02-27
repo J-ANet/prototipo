@@ -584,6 +584,78 @@ def test_strategy_mode_per_subject_changes_plan_for_same_inputs() -> None:
     assert any("RULE_STRATEGY_BACKWARD" in item.get("applied_rules", []) for item in backward_result["decision_trace"])
 
 
+def test_strategy_mode_global_forward_vs_backward_produces_measurable_shift() -> None:
+    payload = {
+        "effective_config": {
+            "global": {
+                "daily_cap_minutes": 120,
+                "daily_cap_tolerance_minutes": 0,
+                "subject_buffer_percent": 0.2,
+                "critical_but_possible_threshold": 0.8,
+                "study_on_exam_day": True,
+                "max_subjects_per_day": 2,
+                "session_duration_minutes": 30,
+                "sleep_hours_per_day": 8,
+                "pomodoro_enabled": False,
+                "stability_vs_recovery": 0.4,
+                "default_strategy_mode": "forward",
+                "human_distribution_mode": "off",
+            },
+            "by_subject": {},
+        },
+        "subjects": {
+            "subjects": [
+                {
+                    "subject_id": "target",
+                    "priority": 2,
+                    "cfu": 0.24,
+                    "difficulty_coeff": 1,
+                    "completion_initial": 0,
+                    "attending": False,
+                    "exam_dates": ["2026-01-07"],
+                    "selected_exam_date": "2026-01-07",
+                    "start_at": "2026-01-01",
+                    "end_by": "2026-01-07",
+                },
+                {
+                    "subject_id": "peer",
+                    "priority": 2,
+                    "cfu": 0.24,
+                    "difficulty_coeff": 1,
+                    "completion_initial": 0,
+                    "attending": False,
+                    "exam_dates": ["2026-01-04"],
+                    "selected_exam_date": "2026-01-04",
+                    "start_at": "2026-01-01",
+                    "end_by": "2026-01-04",
+                },
+            ]
+        },
+        "global_config": {
+            "daily_cap_minutes": 120,
+            "daily_cap_tolerance_minutes": 0,
+            "subject_buffer_percent": 0.2,
+            "session_duration_minutes": 30,
+            "default_strategy_mode": "forward",
+        },
+        "calendar_constraints": {"constraints": []},
+        "manual_sessions": {"manual_sessions": []},
+    }
+
+    forward_result = run_planner(payload)
+
+    payload["effective_config"]["global"]["default_strategy_mode"] = "backward"
+    payload["global_config"]["default_strategy_mode"] = "backward"
+    backward_result = run_planner(payload)
+
+    forward_base_avg = _avg_base_day_index(forward_result["plan"], "target")
+    backward_base_avg = _avg_base_day_index(backward_result["plan"], "target")
+    assert forward_base_avg < backward_base_avg
+
+    assert any("RULE_STRATEGY_FORWARD" in item.get("applied_rules", []) for item in forward_result["decision_trace"])
+    assert any("RULE_STRATEGY_BACKWARD" in item.get("applied_rules", []) for item in backward_result["decision_trace"])
+
+
 def test_concentrated_vs_diffuse_has_quantitative_distribution_differences() -> None:
     payload = {
         "effective_config": {
