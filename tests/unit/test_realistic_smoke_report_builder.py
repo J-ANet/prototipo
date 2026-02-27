@@ -283,6 +283,59 @@ def test_build_results_readme_mentions_double_gate_status() -> None:
     assert "pass ma da migliorare" in readme
 
 
+@pytest.mark.parametrize(
+    ("status", "quality_status", "should_show_warning"),
+    [
+        ("pass", "fail", True),
+        ("pass", "pass", False),
+        ("fail", "fail", False),
+        ("fail", "pass", False),
+    ],
+)
+def test_build_results_readme_shows_pass_but_improvable_only_for_pass_and_quality_fail(
+    status: str,
+    quality_status: str,
+    should_show_warning: bool,
+) -> None:
+    report = {
+        "scenarios": [{"post_rebalance": {"accepted_swaps": 1}}],
+        "summary": {
+            "status": status,
+            "quality_status": quality_status,
+            "humanity_delta": 0.0,
+            "quality_fail_reasons": [],
+        },
+    }
+    comparisons = {
+        "opinion_thresholds": _build_opinion_thresholds(),
+        "cross_scenario": {
+            "forward_scenario": "off_monotone",
+            "backward_scenario": "balanced_diffuse",
+            "backward_minus_forward_humanity_score": 0.0,
+            "backward_minus_forward_mono_day_ratio": 0.0,
+            "backward_minus_forward_max_streak_days": 0.0,
+            "backward_minus_forward_switch_rate": 0.0,
+        },
+        "comparisons": [
+            {
+                "scenario": "balanced_diffuse",
+                "humanity_delta": 0.0,
+                "opinion": {
+                    "label": "marginale",
+                    "direction": "neutral",
+                    "trend": "stabile",
+                    "text": "unused",
+                },
+                "mono_day_ratio": {"pre": 0.9, "post": 0.9},
+            }
+        ],
+    }
+
+    readme = _generate_realistic_smoke.build_results_readme(report, comparisons)
+
+    assert ("pass ma da migliorare" in readme) is should_show_warning
+
+
 def test_build_results_readme_adds_limitations_when_no_swaps_are_accepted() -> None:
     report = {
         "scenarios": [

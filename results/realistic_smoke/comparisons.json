@@ -19,7 +19,9 @@
       "humanity_delta": 0.0,
       "opinion": {
         "label": "marginale",
-        "text": "Impatto marginale (stabile) su humanity_score: \u0394=+0.0000."
+        "direction": "neutral",
+        "trend": "stabile",
+        "text": "Impatto marginale: stabile su humanity_score (\u0394=+0.0000)."
       },
       "mono_day_ratio": {
         "pre": 0.5,
@@ -31,7 +33,9 @@
       "humanity_delta": 0.0,
       "opinion": {
         "label": "marginale",
-        "text": "Impatto marginale (stabile) su humanity_score: \u0394=+0.0000."
+        "direction": "neutral",
+        "trend": "stabile",
+        "text": "Impatto marginale: stabile su humanity_score (\u0394=+0.0000)."
       },
       "mono_day_ratio": {
         "pre": 1.0,
@@ -43,7 +47,9 @@
       "humanity_delta": 0.0,
       "opinion": {
         "label": "marginale",
-        "text": "Impatto marginale (stabile) su humanity_score: \u0394=+0.0000."
+        "direction": "neutral",
+        "trend": "stabile",
+        "text": "Impatto marginale: stabile su humanity_score (\u0394=+0.0000)."
       },
       "mono_day_ratio": {
         "pre": 0.3333,
