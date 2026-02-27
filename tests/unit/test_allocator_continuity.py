@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import date
 
-from planner.engine.allocator import allocate_plan
+from planner.engine.allocator import allocate_plan, strategy_bias
 from planner.engine.scoring import compute_recent_continuity_penalty
 
 
@@ -149,3 +149,62 @@ def test_allocator_records_tradeoff_note_when_consecutive_limit_has_no_alternati
 
     notes = [item["tradeoff_note"] for item in trace.as_list()]
     assert any("Eccezione limite blocchi consecutivi" in note for note in notes)
+
+
+def test_strategy_mode_changes_temporal_distribution_for_same_subject_inputs() -> None:
+    slots = [
+        {"slot_id": "d1", "date": "2026-01-01", "max_minutes": 60},
+        {"slot_id": "d2", "date": "2026-01-02", "max_minutes": 60},
+        {"slot_id": "d3", "date": "2026-01-03", "max_minutes": 60},
+        {"slot_id": "d4", "date": "2026-01-04", "max_minutes": 60},
+    ]
+    subjects = [
+        {"subject_id": "target", "priority": 2, "exam_dates": ["2026-01-05"], "selected_exam_date": "2026-01-05"},
+        {"subject_id": "peer", "priority": 2, "exam_dates": ["2026-01-05"], "selected_exam_date": "2026-01-05"},
+    ]
+    workload = {
+        "target": {"hours_base": 2.0, "hours_buffer": 0.0},
+        "peer": {"hours_base": 2.0, "hours_buffer": 0.0},
+    }
+    features = {"target": {"urgency": 1.0}, "peer": {"urgency": 1.0}}
+
+    def _avg_day_index(result: dict[str, object], sid: str) -> float:
+        plan = result["allocations"]
+        weighted_sum = 0
+        total = 0
+        for item in plan:
+            if item.get("subject_id") != sid or item.get("bucket") != "base":
+                continue
+            idx = int(str(item["date"]).split("-")[-1])
+            mins = int(item.get("minutes", 0) or 0)
+            weighted_sum += idx * mins
+            total += mins
+        assert total > 0
+        return weighted_sum / total
+
+    forward = allocate_plan(
+        slots=slots,
+        subjects=subjects,
+        workload_by_subject=workload,
+        session_minutes=30,
+        score_features_by_subject=features,
+        distribution_config={"default_strategy_mode": "hybrid"},
+        config_by_subject={"target": {"strategy_mode": "forward"}},
+    )
+    backward = allocate_plan(
+        slots=slots,
+        subjects=subjects,
+        workload_by_subject=workload,
+        session_minutes=30,
+        score_features_by_subject=features,
+        distribution_config={"default_strategy_mode": "hybrid"},
+        config_by_subject={"target": {"strategy_mode": "backward"}},
+    )
+
+    assert _avg_day_index(forward, "target") < _avg_day_index(backward, "target")
+    assert strategy_bias("target", "2026-01-01", date(2026, 1, 5), "forward") > strategy_bias(
+        "target", "2026-01-04", date(2026, 1, 5), "forward"
+    )
+    assert strategy_bias("target", "2026-01-01", date(2026, 1, 5), "backward") < strategy_bias(
+        "target", "2026-01-04", date(2026, 1, 5), "backward"
+    )

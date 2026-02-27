@@ -150,11 +150,11 @@ def _current_streak_days(subject_id: str, day: str | date, minutes_by_day: dict[
         return streak
 
 
-def _strategy_weight(subject_id: str, slot_date: str | date, exam_day: date, mode: str) -> float:
-    """Return multiplicative weight from strategy mode and temporal distance to exam."""
+def strategy_bias(subject_id: str, day: str | date, exam_day: date, mode: str) -> float:
+    """Return multiplicative bias from strategy mode and temporal distance to exam."""
     _ = subject_id
-    day = _to_date(slot_date)
-    days_to_exam = max(0, (exam_day - day).days)
+    slot_day = _to_date(day)
+    days_to_exam = max(0, (exam_day - slot_day).days)
     distance = float(days_to_exam)
     near_ratio = 1.0 / (1.0 + distance)
     far_ratio = distance / (distance + 2.0)
@@ -173,10 +173,10 @@ def _strategy_weight(subject_id: str, slot_date: str | date, exam_day: date, mod
 def _strategy_rule(mode: str) -> str:
     normalized_mode = str(mode or "hybrid").lower()
     if normalized_mode == "forward":
-        return "RULE_STRATEGY_MODE_FORWARD"
+        return "RULE_STRATEGY_FORWARD"
     if normalized_mode == "backward":
-        return "RULE_STRATEGY_MODE_BACKWARD"
-    return "RULE_STRATEGY_MODE_HYBRID"
+        return "RULE_STRATEGY_BACKWARD"
+    return "RULE_STRATEGY_HYBRID"
 
 
 
@@ -257,9 +257,12 @@ def allocate_plan(
         )
         for subject in ordered_subjects
     }
+    default_strategy_mode = str((distribution_config or {}).get("default_strategy_mode", "hybrid")).lower()
     strategy_mode_by_subject = {
         str(subject.get("subject_id", "")): str(
-            (config_by_subject or {}).get(str(subject.get("subject_id", "")), {}).get("strategy_mode", "hybrid")
+            (config_by_subject or {}).get(str(subject.get("subject_id", "")), {}).get(
+                "strategy_mode", default_strategy_mode
+            )
         ).lower()
         for subject in ordered_subjects
     }
@@ -352,9 +355,9 @@ def allocate_plan(
                     }
                 )
                 strategy_mode = strategy_mode_by_subject.get(sid, "hybrid")
-                strategy_weight = _strategy_weight(
+                strategy_weight = strategy_bias(
                     subject_id=sid,
-                    slot_date=slot["date"],
+                    day=slot["date"],
                     exam_day=exam_day_by_subject[sid],
                     mode=strategy_mode,
                 )
@@ -437,9 +440,9 @@ def allocate_plan(
             if day > exam_day_by_subject[sid]:
                 continue
             strategy_mode = strategy_mode_by_subject.get(sid, "hybrid")
-            strategy_weight = _strategy_weight(
+            strategy_weight = strategy_bias(
                 subject_id=sid,
-                slot_date=slot["date"],
+                day=slot["date"],
                 exam_day=exam_day_by_subject[sid],
                 mode=strategy_mode,
             )
@@ -490,9 +493,9 @@ def allocate_plan(
             if remaining_buffer[sid] <= 0 or free_minutes < session_minutes:
                 continue
             strategy_mode = strategy_mode_by_subject.get(sid, "hybrid")
-            strategy_weight = _strategy_weight(
+            strategy_weight = strategy_bias(
                 subject_id=sid,
-                slot_date=slot["date"],
+                day=slot["date"],
                 exam_day=exam_day_by_subject[sid],
                 mode=strategy_mode,
             )
