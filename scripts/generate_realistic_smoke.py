@@ -190,6 +190,46 @@ def _validate_comparisons_consistency(comparisons: dict) -> None:
             )
 
 
+def _quality_failure_suggestion(metric_name: str, check: dict) -> str:
+    if metric_name == "max_same_subject_streak_days":
+        return "Riduci la concentrazione per materia e forza più alternanza giornaliera."
+    if metric_name == "mono_day_ratio":
+        return "Distribuisci almeno una seconda materia nei giorni mono-materia."
+    if metric_name == "switch_rate":
+        return "Aumenta i cambi materia tra blocchi consecutivi riducendo blocchi troppo lunghi."
+    if metric_name == "humanity_score":
+        return "Bilancia varietà/switch/streak per aumentare la qualità percepita del piano."
+    if metric_name == "subject_variety_index":
+        return "Aumenta il numero di materie attive sul periodo con una distribuzione più diffusa."
+    return "Ricalibra i vincoli di distribuzione per rispettare il quality gate."
+
+
+def _collect_quality_fail_reasons(scenarios: list[dict]) -> list[dict]:
+    fail_reasons: list[dict] = []
+    for scenario in scenarios:
+        scenario_name = str(scenario["scenario"])
+        for phase_name in ("pre_rebalance", "post_rebalance"):
+            phase = scenario.get(phase_name, {})
+            quality_checks = phase.get("quality_checks", {})
+            for metric_name, check in quality_checks.items():
+                if check.get("status") != "fail":
+                    continue
+                threshold_key = "threshold_min" if "threshold_min" in check else "threshold_max"
+                fail_reasons.append(
+                    {
+                        "scenario": scenario_name,
+                        "phase": phase_name,
+                        "metric": metric_name,
+                        "value": float(check["value"]),
+                        "threshold_key": threshold_key,
+                        "threshold": float(check[threshold_key]),
+                        "suggestion": _quality_failure_suggestion(metric_name, check),
+                    }
+                )
+
+    return fail_reasons
+
+
 def build_results_readme(report: dict, comparisons: dict) -> str:
     threshold_rows = _format_threshold_lines(comparisons["opinion_thresholds"])
     opinion_lines = []
@@ -230,6 +270,35 @@ def build_results_readme(report: dict, comparisons: dict) -> str:
         ),
     ]
 
+    quality_fail_reasons = report.get("summary", {}).get("quality_fail_reasons", [])
+    quality_failure_rows = [
+        (
+            item["scenario"],
+            item["phase"],
+            item["metric"],
+            item["threshold_key"],
+            float(item["threshold"]),
+            float(item["value"]),
+            item["suggestion"],
+        )
+        for item in quality_fail_reasons
+    ]
+    quality_fail_section = (
+        [
+            "",
+            "## Metriche quality fallite",
+            "",
+            "| Scenario | Fase | Metrica | Threshold | Valore | Suggerimento |",
+            "| --- | --- | --- | ---: | ---: | --- |",
+            *[
+                f"| `{scenario}` | `{phase}` | `{metric}` | `{threshold_key}={threshold:.4f}` | {value:.4f} | {suggestion} |"
+                for scenario, phase, metric, threshold_key, threshold, value, suggestion in quality_failure_rows
+            ],
+        ]
+        if quality_failure_rows
+        else ["", "## Metriche quality fallite", "", "Nessuna metrica quality fallita."]
+    )
+
     scenario_rows = report.get("scenarios", [])
     no_accepted_swaps = bool(scenario_rows) and all(
         int(item["post_rebalance"].get("accepted_swaps", 0)) == 0 for item in scenario_rows
@@ -243,6 +312,12 @@ def build_results_readme(report: dict, comparisons: dict) -> str:
         ]
         if no_accepted_swaps
         else []
+    )
+
+    interpretation_line = (
+        "- Interpretazione: se acceptance è `pass` ma quality è `fail`, il piano è **pass ma da migliorare**."
+        if report["summary"]["status"] == "pass" and report["summary"]["quality_status"] == "fail"
+        else "- Interpretazione: acceptance e quality sono coerenti, senza warning aggiuntivi."
     )
 
     return "\n".join(
@@ -278,13 +353,14 @@ def build_results_readme(report: dict, comparisons: dict) -> str:
             "| Metrica | Delta (backward-forward) | Interpretazione |",
             "| --- | ---: | --- |",
             *[f"| `{name}` | {delta:+.4f} | {interp} |" for name, delta, interp in cross_rows],
+            *quality_fail_section,
             *limitations_section,
             "",
             "## Stato finale",
             f"- Acceptance status (`summary.status`): **{report['summary']['status']}**",
             f"- Quality status (`summary.quality_status`): **{report['summary']['quality_status']}**",
             f"- Humanity delta aggregato: `{report['summary']['humanity_delta']:+.4f}`",
-            "- Interpretazione: se acceptance è `pass` ma quality è `fail`, il piano è **pass ma da migliorare**.",
+            interpretation_line,
             "",
             "## Gate di valutazione",
             "- `acceptance_checks`: requisito minimo di fattibilità (usato per lo stato ufficiale).",
@@ -631,6 +707,7 @@ def main() -> None:
             "humanity_delta": round(sum(item["comparison"]["humanity_delta"] for item in scenarios), 4),
             "status": "pass" if all(item["status"] == "pass" for item in scenarios) else "fail",
             "quality_status": "pass" if all(item["quality_status"] == "pass" for item in scenarios) else "fail",
+            "quality_fail_reasons": _collect_quality_fail_reasons(scenarios),
         },
     }
     comparisons = build_comparisons_report(scenarios, _build_opinion_thresholds())

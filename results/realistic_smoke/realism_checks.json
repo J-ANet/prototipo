@@ -556,6 +556,116 @@
   "summary": {
     "humanity_delta": 0.0,
     "status": "pass",
-    "quality_status": "fail"
+    "quality_status": "fail",
+    "quality_fail_reasons": [
+      {
+        "scenario": "off_monotone",
+        "phase": "pre_rebalance",
+        "metric": "humanity_score",
+        "value": 0.364,
+        "threshold_key": "threshold_min",
+        "threshold": 0.45,
+        "suggestion": "Bilancia variet\u00e0/switch/streak per aumentare la qualit\u00e0 percepita del piano."
+      },
+      {
+        "scenario": "off_monotone",
+        "phase": "pre_rebalance",
+        "metric": "max_same_subject_streak_days",
+        "value": 4.0,
+        "threshold_key": "threshold_max",
+        "threshold": 3.0,
+        "suggestion": "Riduci la concentrazione per materia e forza pi\u00f9 alternanza giornaliera."
+      },
+      {
+        "scenario": "off_monotone",
+        "phase": "post_rebalance",
+        "metric": "humanity_score",
+        "value": 0.364,
+        "threshold_key": "threshold_min",
+        "threshold": 0.45,
+        "suggestion": "Bilancia variet\u00e0/switch/streak per aumentare la qualit\u00e0 percepita del piano."
+      },
+      {
+        "scenario": "off_monotone",
+        "phase": "post_rebalance",
+        "metric": "max_same_subject_streak_days",
+        "value": 4.0,
+        "threshold_key": "threshold_max",
+        "threshold": 3.0,
+        "suggestion": "Riduci la concentrazione per materia e forza pi\u00f9 alternanza giornaliera."
+      },
+      {
+        "scenario": "balanced_diffuse",
+        "phase": "pre_rebalance",
+        "metric": "mono_day_ratio",
+        "value": 1.0,
+        "threshold_key": "threshold_max",
+        "threshold": 0.9,
+        "suggestion": "Distribuisci almeno una seconda materia nei giorni mono-materia."
+      },
+      {
+        "scenario": "balanced_diffuse",
+        "phase": "pre_rebalance",
+        "metric": "subject_variety_index",
+        "value": 0.6667,
+        "threshold_key": "threshold_min",
+        "threshold": 0.68,
+        "suggestion": "Aumenta il numero di materie attive sul periodo con una distribuzione pi\u00f9 diffusa."
+      },
+      {
+        "scenario": "balanced_diffuse",
+        "phase": "post_rebalance",
+        "metric": "mono_day_ratio",
+        "value": 1.0,
+        "threshold_key": "threshold_max",
+        "threshold": 0.9,
+        "suggestion": "Distribuisci almeno una seconda materia nei giorni mono-materia."
+      },
+      {
+        "scenario": "balanced_diffuse",
+        "phase": "post_rebalance",
+        "metric": "subject_variety_index",
+        "value": 0.6667,
+        "threshold_key": "threshold_min",
+        "threshold": 0.68,
+        "suggestion": "Aumenta il numero di materie attive sul periodo con una distribuzione pi\u00f9 diffusa."
+      },
+      {
+        "scenario": "subject_overrides_mix",
+        "phase": "pre_rebalance",
+        "metric": "humanity_score",
+        "value": 0.2599,
+        "threshold_key": "threshold_min",
+        "threshold": 0.5,
+        "suggestion": "Bilancia variet\u00e0/switch/streak per aumentare la qualit\u00e0 percepita del piano."
+      },
+      {
+        "scenario": "subject_overrides_mix",
+        "phase": "pre_rebalance",
+        "metric": "max_same_subject_streak_days",
+        "value": 6.0,
+        "threshold_key": "threshold_max",
+        "threshold": 5.0,
+        "suggestion": "Riduci la concentrazione per materia e forza pi\u00f9 alternanza giornaliera."
+      },
+      {
+        "scenario": "subject_overrides_mix",
+        "phase": "post_rebalance",
+        "metric": "humanity_score",
+        "value": 0.2599,
+        "threshold_key": "threshold_min",
+        "threshold": 0.5,
+        "suggestion": "Bilancia variet\u00e0/switch/streak per aumentare la qualit\u00e0 percepita del piano."
+      },
+      {
+        "scenario": "subject_overrides_mix",
+        "phase": "post_rebalance",
+        "metric": "max_same_subject_streak_days",
+        "value": 6.0,
+        "threshold_key": "threshold_max",
+        "threshold": 5.0,
+        "suggestion": "Riduci la concentrazione per materia e forza pi\u00f9 alternanza giornaliera."
+      }
+    ]
   }
 }
