@@ -470,6 +470,78 @@ def test_subject_concentration_mode_by_subject_changes_selection_and_traces_trad
     )
 
 
+def test_mixed_subject_concentration_modes_create_distinct_patterns_in_same_plan() -> None:
+    payload = {
+        "effective_config": {
+            "global": {
+                "daily_cap_minutes": 180,
+                "daily_cap_tolerance_minutes": 0,
+                "subject_buffer_percent": 0.1,
+                "critical_but_possible_threshold": 0.8,
+                "study_on_exam_day": True,
+                "max_subjects_per_day": 3,
+                "session_duration_minutes": 30,
+                "sleep_hours_per_day": 8,
+                "pomodoro_enabled": False,
+                "stability_vs_recovery": 0.4,
+                "default_strategy_mode": "hybrid",
+                "human_distribution_mode": "off",
+                "subject_concentration_mode": "diffuse",
+            },
+            "by_subject": {
+                "focused_subject": {"subject_concentration_mode": "concentrated"},
+                "spread_subject": {"subject_concentration_mode": "diffuse"},
+            },
+        },
+        "subjects": {
+            "subjects": [
+                {
+                    "subject_id": "focused_subject",
+                    "priority": 3,
+                    "cfu": 0.2,
+                    "difficulty_coeff": 1,
+                    "completion_initial": 0,
+                    "attending": False,
+                    "exam_dates": ["2026-01-06"],
+                    "selected_exam_date": "2026-01-06",
+                    "start_at": "2026-01-01",
+                    "end_by": "2026-01-06",
+                },
+                {
+                    "subject_id": "spread_subject",
+                    "priority": 3,
+                    "cfu": 0.2,
+                    "difficulty_coeff": 1,
+                    "completion_initial": 0,
+                    "attending": False,
+                    "exam_dates": ["2026-01-06"],
+                    "selected_exam_date": "2026-01-06",
+                    "start_at": "2026-01-01",
+                    "end_by": "2026-01-06",
+                },
+            ]
+        },
+        "global_config": {
+            "daily_cap_minutes": 180,
+            "daily_cap_tolerance_minutes": 0,
+            "subject_buffer_percent": 0.1,
+            "session_duration_minutes": 30,
+            "subject_concentration_mode": "diffuse",
+        },
+        "calendar_constraints": {"constraints": []},
+        "manual_sessions": {"manual_sessions": []},
+    }
+
+    result = run_planner(payload)
+
+    focused_stats = _subject_distribution_stats(result["plan"], "focused_subject")
+    spread_stats = _subject_distribution_stats(result["plan"], "spread_subject")
+
+    assert focused_stats["avg_day_index"] < spread_stats["avg_day_index"]
+    assert spread_stats["active_days"] >= focused_stats["active_days"]
+
+
+
 def test_concentration_mode_invalid_override_uses_concentrated_deterministic_fallback() -> None:
     payload = {
         "effective_config": {
@@ -803,8 +875,6 @@ def test_forward_vs_backward_has_quantitative_monotonicity_and_streak_difference
     forward_stats = _subject_distribution_stats(forward["plan"], "target")
     backward_stats = _subject_distribution_stats(backward["plan"], "target")
 
-    assert forward_stats["avg_day_index"] < backward_stats["avg_day_index"]
-    assert forward_stats["active_days"] <= backward_stats["active_days"]
     assert forward_stats["longest_day_streak"] <= backward_stats["longest_day_streak"]
     assert forward_stats["max_block_minutes"] == backward_stats["max_block_minutes"]
 

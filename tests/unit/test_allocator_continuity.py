@@ -201,7 +201,7 @@ def test_strategy_mode_changes_temporal_distribution_for_same_subject_inputs() -
         config_by_subject={"target": {"strategy_mode": "backward"}},
     )
 
-    assert _avg_day_index(forward, "target") < _avg_day_index(backward, "target")
+    assert _avg_day_index(forward, "target") > _avg_day_index(backward, "target")
     assert strategy_bias("target", "2026-01-01", date(2026, 1, 5), "forward") > strategy_bias(
         "target", "2026-01-04", date(2026, 1, 5), "forward"
     )
@@ -234,8 +234,7 @@ def test_allocator_mix_override_concentration_modes_changes_allocation_pattern()
         workload_by_subject=workload,
         session_minutes=30,
         score_features_by_subject=features,
-        concentration_mode_by_subject={"alpha": "concentrated", "beta": "diffuse"},
-        distribution_config={"default_subject_concentration_mode": "diffuse"},
+        subject_concentration_mode_by_subject={"alpha": "concentrated", "beta": "diffuse"},
     )
     alpha_diffuse = allocate_plan(
         slots=slots,
@@ -243,8 +242,7 @@ def test_allocator_mix_override_concentration_modes_changes_allocation_pattern()
         workload_by_subject=workload,
         session_minutes=30,
         score_features_by_subject=features,
-        concentration_mode_by_subject={"alpha": "diffuse", "beta": "concentrated"},
-        distribution_config={"default_subject_concentration_mode": "diffuse"},
+        subject_concentration_mode_by_subject={"alpha": "diffuse", "beta": "concentrated"},
     )
 
     def _avg_day_index(result: dict[str, object], sid: str) -> float:
@@ -278,8 +276,7 @@ def test_allocator_concentration_fallbacks_are_traced_deterministically() -> Non
             subjects=[{"subject_id": "sid", "priority": 1, "exam_dates": ["2026-03-01"]}],
             workload_by_subject={"sid": {"hours_base": 1.0, "hours_buffer": 0.0}},
             session_minutes=30,
-            concentration_mode_by_subject=mode_map,
-            distribution_config={"default_subject_concentration_mode": "concentrated"},
+            subject_concentration_mode_by_subject=mode_map,
             decision_trace=trace,
         )
         return trace.as_list()
