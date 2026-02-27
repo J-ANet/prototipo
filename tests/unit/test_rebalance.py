@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import date, datetime, timezone
 
 from planner.engine.rebalance import rebalance_allocations
+from planner.metrics.collector import compute_humanity_metrics
 from planner.reporting.decision_trace import DecisionTraceCollector
 
 
@@ -73,5 +74,10 @@ def test_rebalance_accepts_deterministic_fallback_swap_when_strict_humanity_impr
         near_days_window=5,
     )
 
+    pre_humanity = compute_humanity_metrics(allocations)["humanity_score"]
+    post_humanity = compute_humanity_metrics(rebalanced)["humanity_score"]
+    accepted_swaps = sum(1 for item in trace.as_list() if "RULE_REBALANCE_FALLBACK_SWAP" in item["applied_rules"])
+
     assert rebalanced != allocations
-    assert any("RULE_REBALANCE_FALLBACK_SWAP" in item["applied_rules"] for item in trace.as_list())
+    assert accepted_swaps >= 1
+    assert post_humanity >= pre_humanity
