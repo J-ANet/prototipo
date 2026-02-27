@@ -143,6 +143,11 @@
       "minimum": 1,
       "default": 3
     },
+    "max_same_subject_streak_days_target": {
+      "type": "integer",
+      "minimum": 1,
+      "default": 2
+    },
     "max_same_subject_consecutive_blocks": {
       "type": "integer",
       "minimum": 1,
@@ -152,6 +157,12 @@
       "type": "integer",
       "minimum": 1,
       "default": 2
+    },
+    "human_distribution_strength": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 2,
+      "default": 0.3
     },
     "concentration_mode": {
       "type": "string",

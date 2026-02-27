@@ -31,6 +31,7 @@ def compute_humanity_metrics(allocations: list[dict[str, Any]]) -> dict[str, flo
             "daily_monotony_score": 1.0,
             "mono_day_ratio": 0.0,
             "max_same_subject_streak_days": 0.0,
+            "subject_variety_index": 1.0,
             "switch_rate": 0.0,
             "humanity_score": 1.0,
         }
@@ -54,6 +55,7 @@ def compute_humanity_metrics(allocations: list[dict[str, Any]]) -> dict[str, flo
 
     switch_ratio = switches / max(1, len(ordered) - 1)
     unique_subjects_per_day = [len(subjects) for subjects in day_subject_totals.values()]
+    subject_variety_index = _clamp01(mean(min(1.0, count / 3.0) for count in unique_subjects_per_day))
     variety_gain = mean(min(1.0, max(0, count - 1) / 2.0) for count in unique_subjects_per_day)
     over_fragmentation = mean(max(0.0, (count - 3) / 3.0) for count in unique_subjects_per_day)
     subject_switching_score = _clamp01((0.75 * variety_gain) + (0.25 * switch_ratio) - (0.30 * over_fragmentation))
@@ -101,6 +103,7 @@ def compute_humanity_metrics(allocations: list[dict[str, Any]]) -> dict[str, flo
         "daily_monotony_score": daily_monotony_score,
         "mono_day_ratio": _clamp01(mono_day_ratio),
         "max_same_subject_streak_days": float(max_same_subject_streak),
+        "subject_variety_index": subject_variety_index,
         "switch_rate": _clamp01(switch_ratio),
         "humanity_score": humanity_score,
     }
@@ -283,6 +286,7 @@ def collect_metrics(result: dict[str, Any]) -> dict[str, Any]:
         "daily_monotony_score": humanity_metrics["daily_monotony_score"],
         "mono_day_ratio": humanity_metrics["mono_day_ratio"],
         "max_same_subject_streak_days": humanity_metrics["max_same_subject_streak_days"],
+        "subject_variety_index": humanity_metrics["subject_variety_index"],
         "switch_rate": humanity_metrics["switch_rate"],
         "humanity_score": humanity_metrics["humanity_score"],
         "confidence_score": confidence_score,

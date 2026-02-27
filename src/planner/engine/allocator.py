@@ -94,17 +94,47 @@ def _resolve_subject_distribution(
         mode = "off"
     limits = _distribution_limits_for_mode(mode)
     max_streak = int(merged.get("max_same_subject_streak_days", limits["default_max_streak"]))
+    max_streak_target = int(merged.get("max_same_subject_streak_days_target", max(1, max_streak - 1)))
     max_same_day_blocks = int(
         merged.get("max_same_subject_consecutive_blocks", limits["default_max_same_day_blocks"])
     )
     target_variety = int(merged.get("target_daily_subject_variety", limits["min_variety"]))
+    distribution_strength = float(merged.get("human_distribution_strength", 0.3))
     return {
         "mode": mode,
         "penalty_multiplier": float(limits["penalty_multiplier"]),
+        "distribution_strength": max(0.0, distribution_strength),
         "max_streak_days": max(1, max_streak),
+        "max_streak_days_target": min(max(1, max_streak), max(1, max_streak_target)),
         "max_same_day_blocks": max(1, max_same_day_blocks),
         "target_daily_subject_variety": max(1, target_variety),
     }
+
+
+def _dynamic_streak_penalty(
+    *,
+    streak_days: int,
+    day_block_streak: int,
+    dist_cfg: dict[str, Any],
+) -> float:
+    mode = str(dist_cfg.get("mode", "off"))
+    if mode == "off":
+        return 0.0
+
+    strength = float(dist_cfg.get("distribution_strength", 0.0))
+    multiplier = float(dist_cfg.get("penalty_multiplier", 0.0))
+    if strength <= 0.0 or multiplier <= 0.0:
+        return 0.0
+
+    streak_target = int(dist_cfg.get("max_streak_days_target", 1))
+    streak_excess = max(0, streak_days - streak_target)
+    multi_day_penalty = float(streak_excess * streak_excess)
+
+    day_target = max(1, int(dist_cfg.get("max_same_day_blocks", 1)) - 1)
+    day_excess = max(0, day_block_streak - day_target)
+    same_day_penalty = float(day_excess * day_excess) * 0.6
+
+    return (multi_day_penalty + same_day_penalty) * strength * multiplier
 
 
 def _current_streak_days(subject_id: str, day: str | date, minutes_by_day: dict[date, dict[str, int]]) -> int:
@@ -304,9 +334,23 @@ def allocate_plan(
                     - len(unique_subjects_today | {sid}),
                 )
                 soft_penalty = float(dist_cfg.get("penalty_multiplier", 0.0)) * float(variety_missing) * 0.25
+                projected_streak_days = streak_days + 1
+                projected_same_day_streak = (
+                    day_consecutive_blocks.get(day, 0) + 1 if day_last_subject.get(day) == sid else 1
+                )
+                dynamic_streak_penalty = _dynamic_streak_penalty(
+                    streak_days=projected_streak_days,
+                    day_block_streak=projected_same_day_streak,
+                    dist_cfg=dist_cfg,
+                )
                 concentration_mode = per_subject_concentration_mode.get(sid, "concentrated")
                 adjusted_features = _concentration_adjusted_features(features, concentration_mode)
-                base_score = compute_score({**adjusted_features, "streak_penalty": continuity_penalty + soft_penalty})
+                base_score = compute_score(
+                    {
+                        **adjusted_features,
+                        "streak_penalty": continuity_penalty + soft_penalty + dynamic_streak_penalty,
+                    }
+                )
                 strategy_mode = strategy_mode_by_subject.get(sid, "hybrid")
                 strategy_weight = _strategy_weight(
                     subject_id=sid,
