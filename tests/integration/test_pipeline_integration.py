@@ -96,6 +96,19 @@ def test_end_to_end_pipeline_plan_request_to_plan_output(tmp_path: Path) -> None
     assert payload["plan_output"]["validation_report"]["errors"] == []
 
 
+def test_plan_command_emits_decision_trace_allocation_metadata(tmp_path: Path) -> None:
+    request, _, _, _, _ = _base_files(tmp_path)
+    output = tmp_path / "plan_output.json"
+
+    exit_code = run_plan_command(str(request), str(output))
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    payload["_exit_code"] = exit_code
+
+    assert payload["_exit_code"] == 0
+    trace = payload.get("plan_output", {}).get("decision_trace", [])
+    assert any(isinstance(item.get("allocation_metadata"), dict) for item in trace)
+
+
 def test_replan_with_manual_sessions_updates_future_only(tmp_path: Path) -> None:
     request, global_config, subjects, constraints, manual = _base_files(tmp_path)
 

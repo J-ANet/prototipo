@@ -605,6 +605,11 @@ def allocate_plan(
                     blocked_constraints=[],
                     tradeoff_note="Allocato buffer su materia con base completata e prima dell'esame.",
                     confidence_impact=0.005,
+                    allocation_metadata={
+                        "phase": "buffer_pre_exam",
+                        "strategy_mode": effective_strategy_mode_by_subject.get(sid, "hybrid"),
+                        "strategy_mode_source": strategy_mode_source_by_subject.get(sid, "global_default"),
+                    },
                 )
             remaining_buffer[sid] -= chunk
             free_minutes -= chunk
@@ -659,6 +664,11 @@ def allocate_plan(
                     blocked_constraints=[],
                     tradeoff_note="Riempimento gap con buffer disponibile.",
                     confidence_impact=0.002,
+                    allocation_metadata={
+                        "phase": "buffer_gap_fill",
+                        "strategy_mode": effective_strategy_mode_by_subject.get(sid, "hybrid"),
+                        "strategy_mode_source": strategy_mode_source_by_subject.get(sid, "global_default"),
+                    },
                 )
             remaining_buffer[sid] -= chunk
             free_minutes -= chunk
@@ -676,6 +686,9 @@ def allocate_plan(
                     blocked_constraints=["NO_ELIGIBLE_SUBJECT"],
                     tradeoff_note="Minuti residui marcati come slack esplicito.",
                     confidence_impact=-0.01,
+                    allocation_metadata={
+                        "phase": "slack_gap_fill",
+                    },
                 )
 
     return {

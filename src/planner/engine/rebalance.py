@@ -372,6 +372,9 @@ def rebalance_allocations(
                         f"feasibility {base_feasibility:.3f}->{proposal_feasibility:.3f}."
                     ),
                     confidence_impact=0.002 if proposal_feasibility == base_feasibility else 0.003,
+                    allocation_metadata={
+                        "phase": "rebalance_swap",
+                    },
                 )
             break
 
@@ -400,6 +403,9 @@ def rebalance_allocations(
                         f"feasibility {base_feasibility:.3f}->{proposal_feasibility:.3f}."
                     ),
                     confidence_impact=0.001,
+                    allocation_metadata={
+                        "phase": "rebalance_fallback_swap",
+                    },
                 )
 
         if decision_trace is not None and rejected_counts:
@@ -413,6 +419,9 @@ def rebalance_allocations(
                 blocked_constraints=sorted(rejected_counts.keys()),
                 tradeoff_note=f"Rejected candidate reasons: {summary}",
                 confidence_impact=0.0,
+                allocation_metadata={
+                    "phase": "rebalance_rejected",
+                },
             )
 
         if not improved:
