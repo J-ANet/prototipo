@@ -150,7 +150,7 @@ def _strategy_rule(mode: str) -> str:
 
 
 
-def _normalize_concentration_mode(raw_mode: Any, fallback: str = "diffuse") -> str:
+def _normalize_concentration_mode(raw_mode: Any, fallback: str = "concentrated") -> str:
     mode = str(raw_mode or "").lower()
     if mode in {"diffuse", "concentrated"}:
         return mode
@@ -189,8 +189,7 @@ def allocate_plan(
     continuity_config: dict[str, float | int | bool] | None = None,
     distribution_config: dict[str, Any] | None = None,
     config_by_subject: dict[str, dict[str, Any]] | None = None,
-    concentration_mode_by_subject: dict[str, str] | None = None,
-    global_concentration_mode: str = "diffuse",
+    subject_concentration_mode_by_subject: dict[str, str] | None = None,
     decision_trace: DecisionTraceCollector | None = None,
 ) -> dict[str, Any]:
     """Allocate minutes with deterministic iteration and tie-breaks."""
@@ -234,23 +233,16 @@ def allocate_plan(
         ).lower()
         for subject in ordered_subjects
     }
-    normalized_global_concentration_mode = _normalize_concentration_mode(global_concentration_mode)
     per_subject_concentration_mode: dict[str, str] = {}
     concentration_mode_source: dict[str, str] = {}
     for subject in ordered_subjects:
         sid = str(subject.get("subject_id", ""))
-        explicit_mode = (concentration_mode_by_subject or {}).get(sid)
-        if explicit_mode is None:
-            explicit_mode = (config_by_subject or {}).get(sid, {}).get("concentration_mode")
-        if explicit_mode is None:
-            per_subject_concentration_mode[sid] = normalized_global_concentration_mode
-            concentration_mode_source[sid] = "global_fallback"
-            continue
+        explicit_mode = (subject_concentration_mode_by_subject or {}).get(sid)
         per_subject_concentration_mode[sid] = _normalize_concentration_mode(
             explicit_mode,
-            fallback=normalized_global_concentration_mode,
+            fallback="concentrated",
         )
-        concentration_mode_source[sid] = "subject"
+        concentration_mode_source[sid] = "subject" if explicit_mode is not None else "global_fallback"
     day_subject_set: dict[date, set[str]] = defaultdict(set)
     day_last_subject: dict[date, str] = {}
     day_consecutive_blocks: dict[date, int] = defaultdict(int)
@@ -312,7 +304,7 @@ def allocate_plan(
                     - len(unique_subjects_today | {sid}),
                 )
                 soft_penalty = float(dist_cfg.get("penalty_multiplier", 0.0)) * float(variety_missing) * 0.25
-                concentration_mode = per_subject_concentration_mode.get(sid, normalized_global_concentration_mode)
+                concentration_mode = per_subject_concentration_mode.get(sid, "concentrated")
                 adjusted_features = _concentration_adjusted_features(features, concentration_mode)
                 base_score = compute_score({**adjusted_features, "streak_penalty": continuity_penalty + soft_penalty})
                 strategy_mode = strategy_mode_by_subject.get(sid, "hybrid")

@@ -96,9 +96,16 @@ def run_planner(payload: dict[str, Any]) -> dict[str, Any]:
     effective_config = payload.get("effective_config", {}) if isinstance(payload.get("effective_config"), dict) else {}
     global_config = effective_config.get("global", payload.get("global_config", {}))
     config_by_subject = effective_config.get("by_subject", {}) if isinstance(effective_config.get("by_subject"), dict) else {}
-    global_concentration_mode = global_config.get("concentration_mode", "diffuse") if isinstance(global_config, dict) else "diffuse"
-    concentration_mode_by_subject = {
-        sid: cfg.get("concentration_mode", global_concentration_mode)
+    default_subject_concentration_mode = (
+        global_config.get("subject_concentration_mode", global_config.get("concentration_mode", "concentrated"))
+        if isinstance(global_config, dict)
+        else "concentrated"
+    )
+    subject_concentration_mode_by_subject = {
+        sid: cfg.get(
+            "subject_concentration_mode",
+            cfg.get("concentration_mode", default_subject_concentration_mode),
+        )
         for sid, cfg in config_by_subject.items()
         if isinstance(sid, str) and isinstance(cfg, dict)
     }
@@ -165,8 +172,7 @@ def run_planner(payload: dict[str, Any]) -> dict[str, Any]:
             "target_daily_subject_variety": global_config.get("target_daily_subject_variety", 2),
         },
         config_by_subject=config_by_subject,
-        concentration_mode_by_subject=concentration_mode_by_subject,
-        global_concentration_mode=global_concentration_mode,
+        subject_concentration_mode_by_subject=subject_concentration_mode_by_subject,
         decision_trace=decision_trace,
     )
 

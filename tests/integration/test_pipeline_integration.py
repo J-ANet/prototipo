@@ -356,7 +356,7 @@ def test_strategy_mode_changes_temporal_pattern_deterministically() -> None:
     assert forward_avg < backward_avg
 
 
-def test_concentration_mode_by_subject_changes_selection_and_traces_tradeoff_note() -> None:
+def test_subject_concentration_mode_by_subject_changes_selection_and_traces_tradeoff_note() -> None:
     payload = {
         "effective_config": {
             "global": {
@@ -372,11 +372,11 @@ def test_concentration_mode_by_subject_changes_selection_and_traces_tradeoff_not
                 "stability_vs_recovery": 0.4,
                 "default_strategy_mode": "hybrid",
                 "human_distribution_mode": "off",
-                "concentration_mode": "diffuse",
+                "subject_concentration_mode": "diffuse",
             },
             "by_subject": {
-                "chem": {"concentration_mode": "concentrated"},
-                "bio": {"concentration_mode": "diffuse"},
+                "chem": {"subject_concentration_mode": "concentrated"},
+                "bio": {"subject_concentration_mode": "diffuse"},
             },
         },
         "subjects": {
@@ -412,7 +412,7 @@ def test_concentration_mode_by_subject_changes_selection_and_traces_tradeoff_not
             "daily_cap_tolerance_minutes": 0,
             "subject_buffer_percent": 0.1,
             "session_duration_minutes": 30,
-            "concentration_mode": "diffuse",
+            "subject_concentration_mode": "diffuse",
         },
         "calendar_constraints": {"constraints": []},
         "manual_sessions": {"manual_sessions": []},
@@ -442,7 +442,7 @@ def test_concentration_mode_by_subject_changes_selection_and_traces_tradeoff_not
     )
 
 
-def test_concentration_mode_invalid_override_uses_global_deterministic_fallback() -> None:
+def test_concentration_mode_invalid_override_uses_concentrated_deterministic_fallback() -> None:
     payload = {
         "effective_config": {
             "global": {
@@ -458,10 +458,10 @@ def test_concentration_mode_invalid_override_uses_global_deterministic_fallback(
                 "stability_vs_recovery": 0.4,
                 "default_strategy_mode": "hybrid",
                 "human_distribution_mode": "off",
-                "concentration_mode": "concentrated",
+                "subject_concentration_mode": "concentrated",
             },
             "by_subject": {
-                "hist": {"concentration_mode": "not-valid"},
+                "hist": {"subject_concentration_mode": "not-valid"},
             },
         },
         "subjects": {
@@ -485,7 +485,7 @@ def test_concentration_mode_invalid_override_uses_global_deterministic_fallback(
             "daily_cap_tolerance_minutes": 0,
             "subject_buffer_percent": 0.1,
             "session_duration_minutes": 30,
-            "concentration_mode": "concentrated",
+            "subject_concentration_mode": "concentrated",
         },
         "calendar_constraints": {"constraints": []},
         "manual_sessions": {"manual_sessions": []},
