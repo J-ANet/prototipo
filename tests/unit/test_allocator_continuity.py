@@ -208,3 +208,86 @@ def test_strategy_mode_changes_temporal_distribution_for_same_subject_inputs() -
     assert strategy_bias("target", "2026-01-01", date(2026, 1, 5), "backward") < strategy_bias(
         "target", "2026-01-04", date(2026, 1, 5), "backward"
     )
+
+
+
+def test_allocator_mix_override_concentration_modes_changes_allocation_pattern() -> None:
+    slots = [
+        {"slot_id": "d1", "date": "2026-01-01", "max_minutes": 60},
+        {"slot_id": "d2", "date": "2026-01-02", "max_minutes": 60},
+        {"slot_id": "d3", "date": "2026-01-03", "max_minutes": 60},
+        {"slot_id": "d4", "date": "2026-01-04", "max_minutes": 60},
+    ]
+    subjects = [
+        {"subject_id": "alpha", "priority": 2, "exam_dates": ["2026-01-05"], "selected_exam_date": "2026-01-05"},
+        {"subject_id": "beta", "priority": 2, "exam_dates": ["2026-01-05"], "selected_exam_date": "2026-01-05"},
+    ]
+    workload = {
+        "alpha": {"hours_base": 2.0, "hours_buffer": 0.0},
+        "beta": {"hours_base": 2.0, "hours_buffer": 0.0},
+    }
+    features = {"alpha": {"urgency": 1.0}, "beta": {"urgency": 1.0}}
+
+    alpha_concentrated = allocate_plan(
+        slots=slots,
+        subjects=subjects,
+        workload_by_subject=workload,
+        session_minutes=30,
+        score_features_by_subject=features,
+        concentration_mode_by_subject={"alpha": "concentrated", "beta": "diffuse"},
+        distribution_config={"default_subject_concentration_mode": "diffuse"},
+    )
+    alpha_diffuse = allocate_plan(
+        slots=slots,
+        subjects=subjects,
+        workload_by_subject=workload,
+        session_minutes=30,
+        score_features_by_subject=features,
+        concentration_mode_by_subject={"alpha": "diffuse", "beta": "concentrated"},
+        distribution_config={"default_subject_concentration_mode": "diffuse"},
+    )
+
+    def _avg_day_index(result: dict[str, object], sid: str) -> float:
+        weighted_sum = 0
+        total = 0
+        for item in result["allocations"]:
+            if item.get("subject_id") != sid or item.get("bucket") != "base":
+                continue
+            idx = int(str(item["date"]).split("-")[-1])
+            mins = int(item.get("minutes", 0) or 0)
+            weighted_sum += idx * mins
+            total += mins
+        assert total > 0
+        return weighted_sum / total
+
+    assert _avg_day_index(alpha_concentrated, "alpha") < _avg_day_index(alpha_diffuse, "alpha")
+    assert _avg_day_index(alpha_concentrated, "beta") > _avg_day_index(alpha_diffuse, "beta")
+
+
+def test_allocator_concentration_fallbacks_are_traced_deterministically() -> None:
+    from datetime import datetime, timezone
+
+    from planner.reporting.decision_trace import DecisionTraceCollector
+
+    slot = [{"slot_id": "d1", "date": "2026-01-01", "max_minutes": 30}]
+
+    def _run_trace(mode_map: dict[str, str]) -> list[dict[str, object]]:
+        trace = DecisionTraceCollector(start_timestamp=datetime.now(timezone.utc))
+        allocate_plan(
+            slots=slot,
+            subjects=[{"subject_id": "sid", "priority": 1, "exam_dates": ["2026-03-01"]}],
+            workload_by_subject={"sid": {"hours_base": 1.0, "hours_buffer": 0.0}},
+            session_minutes=30,
+            concentration_mode_by_subject=mode_map,
+            distribution_config={"default_subject_concentration_mode": "concentrated"},
+            decision_trace=trace,
+        )
+        return trace.as_list()
+
+    explicit = _run_trace({"sid": "diffuse"})
+    missing = _run_trace({})
+    invalid = _run_trace({"sid": "not-valid"})
+
+    assert any("RULE_CONCENTRATION_MODE_PER_SUBJECT" in item["applied_rules"] for item in explicit)
+    assert any("RULE_CONCENTRATION_MODE_FALLBACK_MISSING" in item["applied_rules"] for item in missing)
+    assert any("RULE_CONCENTRATION_MODE_FALLBACK_INVALID" in item["applied_rules"] for item in invalid)

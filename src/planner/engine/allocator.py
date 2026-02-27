@@ -227,16 +227,26 @@ def _normalize_concentration_mode(raw_mode: Any, fallback: str = "concentrated")
     return fallback
 
 
+def _resolve_concentration_mode(raw_mode: Any, fallback: str) -> tuple[str, str]:
+    normalized_fallback = _normalize_concentration_mode(fallback)
+    if raw_mode is None:
+        return normalized_fallback, "missing"
+    normalized = _normalize_concentration_mode(raw_mode, fallback=normalized_fallback)
+    if normalized != str(raw_mode).lower():
+        return normalized, "invalid"
+    return normalized, "explicit"
+
+
 def _concentration_multiplier(mode: str) -> float:
     if mode == "concentrated":
         return 1.03
-    return 1.0
+    return 0.98
 
 
 def _concentration_bias(mode: str) -> float:
     if mode == "concentrated":
         return 0.01
-    return 0.0
+    return -0.01
 
 
 def _concentration_adjusted_features(features: dict[str, float], mode: str) -> dict[str, float]:
@@ -260,7 +270,7 @@ def allocate_plan(
     distribution_config: dict[str, Any] | None = None,
     config_by_subject: dict[str, dict[str, Any]] | None = None,
     strategy_mode_by_subject: dict[str, str] | None = None,
-    subject_concentration_mode_by_subject: dict[str, str] | None = None,
+    concentration_mode_by_subject: dict[str, str] | None = None,
     decision_trace: DecisionTraceCollector | None = None,
 ) -> dict[str, Any]:
     """Allocate minutes with deterministic iteration and tie-breaks."""
@@ -319,16 +329,19 @@ def allocate_plan(
         sid: str((strategy_mode_by_subject or {}).get(sid, fallback_strategy_mode_by_subject.get(sid, default_strategy_mode))).lower()
         for sid in fallback_strategy_mode_by_subject
     }
+    default_concentration_mode = _normalize_concentration_mode(
+        (distribution_config or {}).get("default_subject_concentration_mode", "concentrated")
+    )
     per_subject_concentration_mode: dict[str, str] = {}
     concentration_mode_source: dict[str, str] = {}
     for subject in ordered_subjects:
         sid = str(subject.get("subject_id", ""))
-        explicit_mode = (subject_concentration_mode_by_subject or {}).get(sid)
-        per_subject_concentration_mode[sid] = _normalize_concentration_mode(
-            explicit_mode,
-            fallback="concentrated",
+        resolved_mode, resolution = _resolve_concentration_mode(
+            (concentration_mode_by_subject or {}).get(sid),
+            fallback=default_concentration_mode,
         )
-        concentration_mode_source[sid] = "subject" if explicit_mode is not None else "global_fallback"
+        per_subject_concentration_mode[sid] = resolved_mode
+        concentration_mode_source[sid] = resolution
     day_subject_set: dict[date, set[str]] = defaultdict(set)
     day_last_subject: dict[date, str] = {}
     day_consecutive_blocks: dict[date, int] = defaultdict(int)
@@ -363,7 +376,7 @@ def allocate_plan(
 
         while available >= session_minutes:
             candidates: list[tuple[float, tuple[int, int, str], dict[str, Any]]] = []
-            concentration_influence_by_subject: dict[str, bool] = {}
+            concentration_metadata_by_subject: dict[str, dict[str, Any]] = {}
             for subject in day_subjects:
                 sid = str(subject["subject_id"])
                 if remaining_base[sid] <= 0:
@@ -419,7 +432,10 @@ def allocate_plan(
                 score = (base_score + _concentration_bias(concentration_mode)) * strategy_weight * concentration_multiplier
                 tie = deterministic_tie_breaker_key(subject, reference_day=slot["date"])
                 candidates.append((score, tie, subject))
-                concentration_influence_by_subject[sid] = concentration_mode_source.get(sid) == "subject"
+                concentration_metadata_by_subject[sid] = {
+                    "mode": concentration_mode,
+                    "resolution": concentration_mode_source.get(sid, "missing"),
+                }
 
             if not candidates:
                 break
@@ -446,9 +462,21 @@ def allocate_plan(
                     )
 
             sid = str(chosen["subject_id"])
-            concentration_mode_impacted_choice = concentration_influence_by_subject.get(sid, False)
+            concentration_meta = concentration_metadata_by_subject.get(sid, {"mode": "concentrated", "resolution": "missing"})
+            concentration_mode_impacted_choice = concentration_meta["resolution"] == "explicit"
+            concentration_resolution = str(concentration_meta["resolution"])
             if concentration_mode_impacted_choice:
-                tradeoff_note = f"{tradeoff_note} Modalità concentrazione per-materia applicata alla valutazione candidati."
+                tradeoff_note = (
+                    f"{tradeoff_note} Modalità concentrazione per-materia '{concentration_meta['mode']}' applicata alla valutazione candidati."
+                )
+            elif concentration_resolution == "missing":
+                tradeoff_note = (
+                    f"{tradeoff_note} Modalità concentrazione mancante: fallback deterministico '{default_concentration_mode}'."
+                )
+            elif concentration_resolution == "invalid":
+                tradeoff_note = (
+                    f"{tradeoff_note} Modalità concentrazione non valida: fallback deterministico '{default_concentration_mode}'."
+                )
             chunk = min(session_minutes, available, remaining_base[sid])
             _alloc_chunk(subject_id=sid, slot=slot, minutes=chunk, bucket="base", out=allocations)
             if decision_trace is not None:
@@ -458,6 +486,10 @@ def allocate_plan(
                     applied_rules.append("RULE_LIMIT_CONSECUTIVE_BLOCKS")
                 if concentration_mode_impacted_choice:
                     applied_rules.append("RULE_CONCENTRATION_MODE_PER_SUBJECT")
+                if concentration_resolution == "missing":
+                    applied_rules.append("RULE_CONCENTRATION_MODE_FALLBACK_MISSING")
+                if concentration_resolution == "invalid":
+                    applied_rules.append("RULE_CONCENTRATION_MODE_FALLBACK_INVALID")
                 decision_trace.record(
                     slot_id=str(slot["slot_id"]),
                     candidate_subjects=[str(item[2]["subject_id"]) for item in candidates],
