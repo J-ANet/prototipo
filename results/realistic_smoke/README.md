@@ -18,6 +18,7 @@ Soglie `abs(humanity_delta)` usate nell'audit smoke:
 
 - **off_monotone**: impatto **marginale** (stabile) su humanity_score, con Δ=+0.0000.
 - **balanced_diffuse**: impatto **marginale** (stabile) su humanity_score, con Δ=+0.0000.
+- **subject_overrides_mix**: impatto **marginale** (stabile) su humanity_score, con Δ=+0.0000.
 
 ## Mini-tabella verificabilità (mono_day_ratio)
 
@@ -25,6 +26,7 @@ Soglie `abs(humanity_delta)` usate nell'audit smoke:
 | --- | ---: | ---: |
 | `off_monotone` | 0.5000 | 0.5000 |
 | `balanced_diffuse` | 1.0000 | 1.0000 |
+| `subject_overrides_mix` | 0.3333 | 0.3333 |
 
 ## Forward vs Backward
 

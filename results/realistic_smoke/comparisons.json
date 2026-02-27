@@ -37,6 +37,18 @@
         "pre": 1.0,
         "post": 1.0
       }
+    },
+    {
+      "scenario": "subject_overrides_mix",
+      "humanity_delta": 0.0,
+      "opinion": {
+        "label": "marginale",
+        "text": "Impatto marginale (stabile) su humanity_score: \u0394=+0.0000."
+      },
+      "mono_day_ratio": {
+        "pre": 0.3333,
+        "post": 0.3333
+      }
     }
   ],
   "cross_scenario": {

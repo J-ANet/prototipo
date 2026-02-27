@@ -30,23 +30,25 @@ class DecisionTraceCollector:
         blocked_constraints: list[str],
         tradeoff_note: str,
         confidence_impact: float,
+        allocation_metadata: dict[str, Any] | None = None,
     ) -> None:
         self._sequence += 1
         timestamp = self.start_timestamp + timedelta(seconds=self._sequence)
-        self._items.append(
-            {
-                "decision_id": f"d-{self._sequence:06d}",
-                "timestamp": timestamp.isoformat().replace("+00:00", "Z"),
-                "slot_id": slot_id,
-                "candidate_subjects": sorted(candidate_subjects),
-                "scores_by_subject": {sid: float(scores_by_subject[sid]) for sid in sorted(scores_by_subject)},
-                "selected_subject_id": selected_subject_id,
-                "applied_rules": applied_rules,
-                "blocked_constraints": blocked_constraints,
-                "tradeoff_note": tradeoff_note,
-                "confidence_impact": float(confidence_impact),
-            }
-        )
+        item = {
+            "decision_id": f"d-{self._sequence:06d}",
+            "timestamp": timestamp.isoformat().replace("+00:00", "Z"),
+            "slot_id": slot_id,
+            "candidate_subjects": sorted(candidate_subjects),
+            "scores_by_subject": {sid: float(scores_by_subject[sid]) for sid in sorted(scores_by_subject)},
+            "selected_subject_id": selected_subject_id,
+            "applied_rules": applied_rules,
+            "blocked_constraints": blocked_constraints,
+            "tradeoff_note": tradeoff_note,
+            "confidence_impact": float(confidence_impact),
+        }
+        if allocation_metadata:
+            item["allocation_metadata"] = allocation_metadata
+        self._items.append(item)
 
     def as_list(self) -> list[dict[str, Any]]:
         """Return trace sorted in deterministic chronological order."""

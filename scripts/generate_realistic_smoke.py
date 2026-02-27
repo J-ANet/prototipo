@@ -325,6 +325,54 @@ def _evaluate_metrics(case: dict, metrics: dict) -> tuple[dict, dict]:
     return compact, {"acceptance_checks": acceptance_checks, "quality_checks": quality_checks}
 
 
+def _subject_indicators(result: dict) -> dict[str, dict[str, float | str]]:
+    per_subject_minutes_by_day: dict[str, dict[str, int]] = {}
+    for slot in result.get("plan", []):
+        sid = str(slot.get("subject_id", ""))
+        if not sid or sid == "__slack__" or slot.get("bucket") != "base":
+            continue
+        day = str(slot.get("date", ""))
+        per_subject_minutes_by_day.setdefault(sid, {})
+        per_subject_minutes_by_day[sid][day] = per_subject_minutes_by_day[sid].get(day, 0) + int(slot.get("minutes", 0) or 0)
+
+    concentration_by_subject: dict[str, str] = {}
+    concentration_origin_by_subject: dict[str, str] = {}
+    for item in result.get("decision_trace", []):
+        sid = str(item.get("selected_subject_id", ""))
+        metadata = item.get("allocation_metadata", {})
+        if sid in {"", "__slack__"} or metadata.get("phase") != "base":
+            continue
+        concentration_by_subject.setdefault(sid, str(metadata.get("concentration_mode", "")))
+        concentration_origin_by_subject.setdefault(sid, str(metadata.get("concentration_origin", "")))
+
+    indicators: dict[str, dict[str, float | str]] = {}
+    for sid, daily in per_subject_minutes_by_day.items():
+        sorted_days = sorted(daily)
+        total_minutes = sum(daily.values())
+        longest_streak = 0
+        current_streak = 0
+        previous_day = None
+        for day in sorted_days:
+            day_number = int(day.split("-")[-1])
+            if previous_day is not None and day_number == previous_day + 1:
+                current_streak += 1
+            else:
+                current_streak = 1
+            longest_streak = max(longest_streak, current_streak)
+            previous_day = day_number
+
+        indicators[sid] = {
+            "concentration_mode": concentration_by_subject.get(sid, "unknown"),
+            "concentration_origin": concentration_origin_by_subject.get(sid, "unknown"),
+            "active_days": float(len(daily)),
+            "longest_streak_days": float(longest_streak),
+            "max_day_minutes": float(max(daily.values()) if daily else 0),
+            "clustering_ratio": round((max(daily.values()) / total_minutes) if total_minutes > 0 else 0.0, 4),
+        }
+
+    return indicators
+
+
 def _run_single(case: dict, *, rebalance_max_swaps: int) -> dict:
     loaded = {
         "plan_request": {
@@ -350,6 +398,7 @@ def _run_single(case: dict, *, rebalance_max_swaps: int) -> dict:
         "rebalance_max_swaps": rebalance_max_swaps,
         "accepted_swaps": len(result.get("rebalanced_swaps", [])),
         "metrics": compact,
+        "subject_indicators": _subject_indicators(result),
         "acceptance_checks": acceptance_checks,
         "quality_checks": quality_checks,
         "status": "pass" if all(item["status"] == "pass" for item in acceptance_checks.values()) else "fail",
@@ -470,6 +519,49 @@ def main() -> None:
             "quality_min_switch_rate": 0.18,
             "quality_max_same_subject_streak_days_target": 2,
             "quality_min_subject_variety_index": 0.68,
+            "rebalance_max_swaps": 20,
+        },
+        {
+            "name": "subject_overrides_mix",
+            "global_config": {
+                "schema_version": "1.0",
+                "daily_cap_minutes": 240,
+                "daily_cap_tolerance_minutes": 0,
+                "subject_buffer_percent": 0.1,
+                "critical_but_possible_threshold": 0.8,
+                "study_on_exam_day": False,
+                "max_subjects_per_day": 3,
+                "session_duration_minutes": 30,
+                "sleep_hours_per_day": 8,
+                "pomodoro_enabled": True,
+                "pomodoro_work_minutes": 25,
+                "pomodoro_short_break_minutes": 5,
+                "pomodoro_long_break_minutes": 15,
+                "pomodoro_long_break_every": 4,
+                "pomodoro_count_breaks_in_capacity": True,
+                "stability_vs_recovery": 0.4,
+                "default_strategy_mode": "hybrid",
+                "human_distribution_mode": "off",
+                "concentration_mode": "concentrated",
+            },
+            "subjects": {
+                "schema_version": "1.0",
+                "subjects": [
+                    {"subject_id": "s_focus", "name": "Focused", "cfu": 0.3, "difficulty_coeff": 1, "priority": 3, "completion_initial": 0, "attending": False, "exam_dates": ["2026-01-06"], "selected_exam_date": "2026-01-06", "start_at": "2026-01-01", "end_by": "2026-01-06", "overrides": {"concentration_mode": "concentrated"}},
+                    {"subject_id": "s_spread_a", "name": "Spread A", "cfu": 0.3, "difficulty_coeff": 1, "priority": 3, "completion_initial": 0, "attending": False, "exam_dates": ["2026-01-06"], "selected_exam_date": "2026-01-06", "start_at": "2026-01-01", "end_by": "2026-01-06", "overrides": {"concentration_mode": "diffuse"}},
+                    {"subject_id": "s_spread_b", "name": "Spread B", "cfu": 0.3, "difficulty_coeff": 1, "priority": 3, "completion_initial": 0, "attending": False, "exam_dates": ["2026-01-06"], "selected_exam_date": "2026-01-06", "start_at": "2026-01-01", "end_by": "2026-01-06", "overrides": {"concentration_mode": "diffuse"}},
+                ],
+            },
+            "acceptance_min_humanity_score": 0.25,
+            "acceptance_max_mono_day_ratio": 1.0,
+            "acceptance_min_switch_rate": 0.05,
+            "acceptance_max_same_subject_streak_days_target": 6,
+            "acceptance_min_subject_variety_index": 0.2,
+            "quality_min_humanity_score": 0.5,
+            "quality_max_mono_day_ratio": 0.95,
+            "quality_min_switch_rate": 0.1,
+            "quality_max_same_subject_streak_days_target": 5,
+            "quality_min_subject_variety_index": 0.3,
             "rebalance_max_swaps": 20,
         },
     ]
