@@ -8,7 +8,8 @@
         "humanity_score": 0.5224,
         "mono_day_ratio": 0.5,
         "max_same_subject_streak_days": 3.0,
-        "switch_rate": 0.1613
+        "switch_rate": 0.1613,
+        "subject_variety_index": 0.5
       },
       "checks": {
         "exit_code": {
@@ -30,6 +31,16 @@
           "value": 0.1613,
           "threshold_min": 0.05,
           "status": "pass"
+        },
+        "max_same_subject_streak_days": {
+          "value": 3.0,
+          "threshold_max": 99,
+          "status": "pass"
+        },
+        "subject_variety_index": {
+          "value": 0.5,
+          "threshold_min": 0.3,
+          "status": "pass"
         }
       },
       "status": "pass"
@@ -38,11 +49,12 @@
       "scenario": "balanced_diffuse",
       "mode": "balanced",
       "metrics": {
-        "confidence_score": 0.4558,
-        "humanity_score": 0.7301,
+        "confidence_score": 0.4659,
+        "humanity_score": 0.7717,
         "mono_day_ratio": 1.0,
         "max_same_subject_streak_days": 2.0,
-        "switch_rate": 0.2174
+        "switch_rate": 0.2174,
+        "subject_variety_index": 0.6667
       },
       "checks": {
         "exit_code": {
@@ -51,7 +63,7 @@
           "status": "pass"
         },
         "humanity_score": {
-          "value": 0.7301,
+          "value": 0.7717,
           "threshold_min": 0.55,
           "status": "pass"
         },
@@ -63,6 +75,16 @@
         "switch_rate": {
           "value": 0.2174,
           "threshold_min": 0.1,
+          "status": "pass"
+        },
+        "max_same_subject_streak_days": {
+          "value": 2.0,
+          "threshold_max": 2,
+          "status": "pass"
+        },
+        "subject_variety_index": {
+          "value": 0.6667,
+          "threshold_min": 0.6,
           "status": "pass"
         }
       },

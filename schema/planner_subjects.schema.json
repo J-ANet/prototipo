@@ -110,6 +110,10 @@
                 "pomodoro_count_breaks_in_capacity",
                 "human_distribution_mode",
                 "max_same_subject_streak_days",
+                "max_same_subject_streak_days_target",
+                "human_distribution_strength",
+                "max_same_subject_consecutive_blocks",
+                "target_daily_subject_variety",
                 "concentration_mode"
               ]
             }

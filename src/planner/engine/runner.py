@@ -168,8 +168,10 @@ def run_planner(payload: dict[str, Any]) -> dict[str, Any]:
         distribution_config={
             "human_distribution_mode": global_config.get("human_distribution_mode", "off"),
             "max_same_subject_streak_days": global_config.get("max_same_subject_streak_days", 3),
+            "max_same_subject_streak_days_target": global_config.get("max_same_subject_streak_days_target", 2),
             "max_same_subject_consecutive_blocks": global_config.get("max_same_subject_consecutive_blocks", 3),
             "target_daily_subject_variety": global_config.get("target_daily_subject_variety", 2),
+            "human_distribution_strength": global_config.get("human_distribution_strength", 0.3),
         },
         config_by_subject=config_by_subject,
         subject_concentration_mode_by_subject=subject_concentration_mode_by_subject,
