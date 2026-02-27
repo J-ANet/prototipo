@@ -1154,12 +1154,23 @@ def test_rebalance_enabled_produces_at_least_one_accepted_swap() -> None:
         "manual_sessions": {"manual_sessions": []},
     }
 
+    baseline_payload = json.loads(json.dumps(payload))
+    baseline_payload["effective_config"]["global"]["rebalance_max_swaps"] = 0
+    baseline_payload["global_config"]["rebalance_max_swaps"] = 0
+
+    baseline_result = run_planner(baseline_payload)
     result = run_planner(payload)
+
     accepted_swaps = sum(
         1
         for item in result["decision_trace"]
         if "RULE_REBALANCE_SWAP" in item.get("applied_rules", [])
         or "RULE_REBALANCE_FALLBACK_SWAP" in item.get("applied_rules", [])
     )
+    humanity_delta = (
+        float(result["plan_summary"]["humanity_score"])
+        - float(baseline_result["plan_summary"]["humanity_score"])
+    )
 
     assert accepted_swaps > 0
+    assert humanity_delta >= 0.0
