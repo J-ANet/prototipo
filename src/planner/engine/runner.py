@@ -6,6 +6,7 @@ from datetime import date, datetime, timezone
 from typing import Any
 
 from .allocator import allocate_plan
+from .rebalance import rebalance_allocations
 from .replan import (
     apply_locked_constraints_to_slots,
     build_critical_warnings,
@@ -161,7 +162,15 @@ def run_planner(payload: dict[str, Any]) -> dict[str, Any]:
         decision_trace=decision_trace,
     )
 
-    new_horizon = allocation_result["allocations"]
+    new_horizon = rebalance_allocations(
+        allocations=allocation_result["allocations"],
+        slots=constrained_slots,
+        subjects=subjects,
+        global_config=global_config if isinstance(global_config, dict) else {},
+        config_by_subject=config_by_subject,
+        decision_trace=decision_trace,
+        past_cutoff=window.from_date,
+    )
     metrics = compute_reallocation_metrics(previous_horizon, new_horizon)
     humanity_metrics = compute_humanity_metrics(new_horizon)
     warnings, suggestions = build_warnings_and_suggestions(
