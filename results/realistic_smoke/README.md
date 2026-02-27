@@ -9,22 +9,32 @@ Questo report espone **confidence** e **qualità umana** del piano.
 - `max_same_subject_streak_days`: massima striscia consecutiva di giorni dominati dalla stessa materia.
 - `switch_rate` (0-1): frequenza cambi materia tra blocchi consecutivi.
 
-## Qualità umana
-Gli scenari smoke sono valutati in modalità **pre-rebalance** e **post-rebalance** con indicatori quantitativi.
+## Opinione (data-driven da `comparisons.json`)
 
-| Indicatore | Soglia pass | Esito fail |
-| --- | --- | --- |
-| `humanity_score` | `>= 0.30` (off_monotone) / `>= 0.55` (balanced_diffuse) | qualità umana insufficiente |
-| `mono_day_ratio` | `<= 1.00` | distribuzione troppo monotona |
-| `switch_rate` | `>= 0.05` (off_monotone) / `>= 0.10` (balanced_diffuse) | alternanza materie troppo bassa |
-| `max_same_subject_streak_days` | `<= 99` (off_monotone) / `<= 2` (balanced_diffuse) | streak eccessivo |
-| `subject_variety_index` | `>= 0.30` (off_monotone) / `>= 0.60` (balanced_diffuse) | varietà insufficiente |
+Soglie `abs(humanity_delta)`:
+- `marginale`: `<= 0.1499`
+- `moderato`: `0.1500 - 0.2999`
+- `forte`: `>= 0.3000`
 
-Inoltre il report aggrega `comparison.humanity_delta` (post - pre) per controllare l'impatto del rebalance.
+- **off_monotone**: Impatto marginale (stabile) su humanity_score: Δ=+0.0000.
+- **balanced_diffuse**: Impatto marginale (stabile) su humanity_score: Δ=+0.0000.
+
+## Mini-tabella verificabilità (mono_day_ratio)
+
+| Scenario | Mono ratio pre | Mono ratio post |
+| --- | ---: | ---: |
+| `off_monotone` | 0.5000 | 0.5000 |
+| `balanced_diffuse` | 1.0000 | 1.0000 |
+
+## Stato finale
+- Summary status: **pass**
+- Humanity delta aggregato: `+0.0000`
 
 ## Come rigenerare
 ```bash
 python scripts/generate_realistic_smoke.py
 ```
 
-L'output è in `results/realistic_smoke/realism_checks.json` con `status` pass/fail per scenario, per fase (pre/post-rebalance) e per ogni check.
+Output prodotti:
+- `results/realistic_smoke/realism_checks.json`
+- `results/realistic_smoke/comparisons.json`

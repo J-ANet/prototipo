@@ -14,6 +14,137 @@ from planner.normalization import resolve_effective_config
 from planner.validation import ValidationReport
 
 OUT = ROOT / "results" / "realistic_smoke" / "realism_checks.json"
+COMPARISONS_OUT = ROOT / "results" / "realistic_smoke" / "comparisons.json"
+README_OUT = ROOT / "results" / "realistic_smoke" / "README.md"
+
+
+def _build_opinion_thresholds() -> list[dict]:
+    return [
+        {"label": "marginale", "max_abs_delta": 0.1499},
+        {"label": "moderato", "max_abs_delta": 0.2999},
+        {"label": "forte", "max_abs_delta": 1.0},
+    ]
+
+
+def _opinion_label_for_delta(delta: float, thresholds: list[dict]) -> str:
+    abs_delta = abs(delta)
+    for band in thresholds:
+        if abs_delta <= float(band["max_abs_delta"]):
+            return str(band["label"])
+    return str(thresholds[-1]["label"])
+
+
+def _opinion_text(delta: float, label: str) -> str:
+    if delta > 0:
+        trend = "incremento"
+    elif delta < 0:
+        trend = "calo"
+    else:
+        trend = "stabile"
+    return f"Impatto {label} ({trend}) su humanity_score: Δ={delta:+.4f}."
+
+
+def build_comparisons_report(scenarios: list[dict], thresholds: list[dict]) -> dict:
+    comparison_items = []
+    for scenario in scenarios:
+        delta = float(scenario["comparison"]["humanity_delta"])
+        label = _opinion_label_for_delta(delta, thresholds)
+        comparison_items.append(
+            {
+                "scenario": scenario["scenario"],
+                "humanity_delta": round(delta, 4),
+                "opinion": {
+                    "label": label,
+                    "text": _opinion_text(delta, label),
+                },
+                "mono_day_ratio": {
+                    "pre": float(scenario["pre_rebalance"]["metrics"]["mono_day_ratio"]),
+                    "post": float(scenario["post_rebalance"]["metrics"]["mono_day_ratio"]),
+                },
+            }
+        )
+    return {"opinion_thresholds": thresholds, "comparisons": comparison_items}
+
+
+def _validate_comparisons_consistency(comparisons: dict) -> None:
+    thresholds = comparisons["opinion_thresholds"]
+    sorted_thresholds = sorted(thresholds, key=lambda item: float(item["max_abs_delta"]))
+    bounds: dict[str, tuple[float, float]] = {}
+    lower = 0.0
+    for band in sorted_thresholds:
+        label = str(band["label"])
+        upper = float(band["max_abs_delta"])
+        bounds[label] = (lower, upper)
+        lower = upper
+
+    for item in comparisons["comparisons"]:
+        delta = abs(float(item["humanity_delta"]))
+        label = str(item["opinion"]["label"])
+        if label not in bounds:
+            raise ValueError(f"Opinion label non riconosciuta: {label}")
+        lower_bound, upper_bound = bounds[label]
+        if not (lower_bound <= delta <= upper_bound):
+            raise ValueError(
+                "Incoerenza opinione/delta per "
+                f"{item['scenario']}: label={label}, delta={delta:.4f}, "
+                f"atteso in [{lower_bound:.4f}, {upper_bound:.4f}]"
+            )
+
+
+def build_results_readme(report: dict, comparisons: dict) -> str:
+    thresholds = {item["label"]: float(item["max_abs_delta"]) for item in comparisons["opinion_thresholds"]}
+    opinion_lines = []
+    mono_rows = []
+    for item in comparisons["comparisons"]:
+        opinion_lines.append(
+            f"- **{item['scenario']}**: {item['opinion']['text']}"
+        )
+        mono_rows.append(
+            f"| `{item['scenario']}` | {item['mono_day_ratio']['pre']:.4f} | {item['mono_day_ratio']['post']:.4f} |"
+        )
+
+    return "\n".join(
+        [
+            "# Realistic smoke results",
+            "",
+            "Questo report espone **confidence** e **qualità umana** del piano.",
+            "",
+            "## Metriche chiave",
+            "- `confidence_score`: fattibilità complessiva del piano.",
+            "- `humanity_score` (0-1): qualità percepita della distribuzione, aggregata da varietà/switch/streak.",
+            "- `mono_day_ratio` (0-1): quota di giorni con una sola materia.",
+            "- `max_same_subject_streak_days`: massima striscia consecutiva di giorni dominati dalla stessa materia.",
+            "- `switch_rate` (0-1): frequenza cambi materia tra blocchi consecutivi.",
+            "",
+            "## Opinione (data-driven da `comparisons.json`)",
+            "",
+            "Soglie `abs(humanity_delta)`:",
+            f"- `marginale`: `<= {thresholds['marginale']:.4f}`",
+            f"- `moderato`: `{thresholds['marginale'] + 0.0001:.4f} - {thresholds['moderato']:.4f}`",
+            f"- `forte`: `>= {thresholds['moderato'] + 0.0001:.4f}`",
+            "",
+            *opinion_lines,
+            "",
+            "## Mini-tabella verificabilità (mono_day_ratio)",
+            "",
+            "| Scenario | Mono ratio pre | Mono ratio post |",
+            "| --- | ---: | ---: |",
+            *mono_rows,
+            "",
+            "## Stato finale",
+            f"- Summary status: **{report['summary']['status']}**",
+            f"- Humanity delta aggregato: `{report['summary']['humanity_delta']:+.4f}`",
+            "",
+            "## Come rigenerare",
+            "```bash",
+            "python scripts/generate_realistic_smoke.py",
+            "```",
+            "",
+            "Output prodotti:",
+            "- `results/realistic_smoke/realism_checks.json`",
+            "- `results/realistic_smoke/comparisons.json`",
+        ]
+    )
 
 
 def _evaluate_metrics(case: dict, metrics: dict) -> tuple[dict, dict]:
@@ -201,10 +332,17 @@ def main() -> None:
             "status": "pass" if all(item["status"] == "pass" for item in scenarios) else "fail",
         },
     }
+    comparisons = build_comparisons_report(scenarios, _build_opinion_thresholds())
+    _validate_comparisons_consistency(comparisons)
+    readme_content = build_results_readme(report, comparisons)
 
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text(json.dumps(report, indent=2), encoding="utf-8")
+    COMPARISONS_OUT.write_text(json.dumps(comparisons, indent=2), encoding="utf-8")
+    README_OUT.write_text(readme_content + "\n", encoding="utf-8")
     print(f"Wrote {OUT}")
+    print(f"Wrote {COMPARISONS_OUT}")
+    print(f"Wrote {README_OUT}")
 
     if report["summary"]["status"] != "pass":
         raise SystemExit(1)
