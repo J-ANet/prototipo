@@ -166,6 +166,7 @@ def run_planner(payload: dict[str, Any]) -> dict[str, Any]:
         workload_by_subject=workload_by_subject,
         session_minutes=int(global_config.get("session_duration_minutes", 30)),
         distribution_config={
+            "default_strategy_mode": global_config.get("default_strategy_mode", "hybrid"),
             "human_distribution_mode": global_config.get("human_distribution_mode", "off"),
             "max_same_subject_streak_days": global_config.get("max_same_subject_streak_days", 3),
             "max_same_subject_streak_days_target": global_config.get("max_same_subject_streak_days_target", 2),

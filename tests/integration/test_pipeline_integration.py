@@ -496,3 +496,84 @@ def test_concentration_mode_invalid_override_uses_concentrated_deterministic_fal
     with_missing = run_planner(payload)
 
     assert with_invalid["plan"] == with_missing["plan"]
+
+
+def test_strategy_mode_per_subject_changes_plan_for_same_inputs() -> None:
+    payload = {
+        "effective_config": {
+            "global": {
+                "daily_cap_minutes": 180,
+                "daily_cap_tolerance_minutes": 0,
+                "subject_buffer_percent": 0.2,
+                "critical_but_possible_threshold": 0.8,
+                "study_on_exam_day": True,
+                "max_subjects_per_day": 3,
+                "session_duration_minutes": 30,
+                "sleep_hours_per_day": 8,
+                "pomodoro_enabled": False,
+                "stability_vs_recovery": 0.4,
+                "default_strategy_mode": "hybrid",
+                "human_distribution_mode": "off",
+            },
+            "by_subject": {"target": {"strategy_mode": "forward"}},
+        },
+        "subjects": {
+            "subjects": [
+                {
+                    "subject_id": "target",
+                    "priority": 2,
+                    "cfu": 0.16,
+                    "difficulty_coeff": 1,
+                    "completion_initial": 0,
+                    "attending": False,
+                    "exam_dates": ["2026-01-05"],
+                    "selected_exam_date": "2026-01-05",
+                    "start_at": "2026-01-01",
+                    "end_by": "2026-01-05",
+                },
+                {
+                    "subject_id": "peer",
+                    "priority": 2,
+                    "cfu": 0.16,
+                    "difficulty_coeff": 1,
+                    "completion_initial": 0,
+                    "attending": False,
+                    "exam_dates": ["2026-01-05"],
+                    "selected_exam_date": "2026-01-05",
+                    "start_at": "2026-01-01",
+                    "end_by": "2026-01-05",
+                },
+            ]
+        },
+        "global_config": {
+            "daily_cap_minutes": 180,
+            "daily_cap_tolerance_minutes": 0,
+            "subject_buffer_percent": 0.2,
+            "session_duration_minutes": 30,
+            "default_strategy_mode": "hybrid",
+        },
+        "calendar_constraints": {"constraints": []},
+        "manual_sessions": {"manual_sessions": []},
+    }
+
+    forward_result = run_planner(payload)
+
+    payload["effective_config"]["by_subject"]["target"]["strategy_mode"] = "backward"
+    backward_result = run_planner(payload)
+
+    def _avg_base_day_index(plan: list[dict], subject_id: str) -> float:
+        weighted_sum = 0.0
+        total_minutes = 0
+        for item in plan:
+            if item.get("subject_id") != subject_id or item.get("bucket") != "base":
+                continue
+            day_idx = int(str(item.get("date")).split("-")[-1])
+            minutes = int(item.get("minutes", 0) or 0)
+            weighted_sum += float(day_idx * minutes)
+            total_minutes += minutes
+        assert total_minutes > 0
+        return weighted_sum / float(total_minutes)
+
+    assert _avg_base_day_index(forward_result["plan"], "target") < _avg_base_day_index(backward_result["plan"], "target")
+    assert any("RULE_STRATEGY_FORWARD" in item.get("applied_rules", []) for item in forward_result["decision_trace"])
+    assert any("RULE_STRATEGY_BACKWARD" in item.get("applied_rules", []) for item in backward_result["decision_trace"])
