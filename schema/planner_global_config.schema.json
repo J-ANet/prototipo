@@ -152,6 +152,14 @@
       "type": "integer",
       "minimum": 1,
       "default": 2
+    },
+    "concentration_mode": {
+      "type": "string",
+      "enum": [
+        "diffuse",
+        "concentrated"
+      ],
+      "default": "diffuse"
     }
   },
   "allOf": [

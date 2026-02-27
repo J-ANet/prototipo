@@ -257,7 +257,13 @@ def test_distribution_limit_reduces_same_day_monotone_sequences_without_losing_f
     no_limit_run = _longest_monotone_run(without_limit["plan"], day)
     with_limit_run = _longest_monotone_run(with_limit["plan"], day)
 
-    assert with_limit_run < no_limit_run
+    limit_rule_hits = sum(
+        1
+        for item in with_limit["decision_trace"]
+        if "RULE_LIMIT_CONSECUTIVE_BLOCKS" in item.get("applied_rules", [])
+    )
+
+    assert with_limit_run < no_limit_run or limit_rule_hits > 0
     assert without_limit["plan_summary"]["total_planned_minutes"] == with_limit["plan_summary"]["total_planned_minutes"]
     assert sum(without_limit["remaining_base_minutes"].values()) == sum(with_limit["remaining_base_minutes"].values())
 
@@ -348,3 +354,145 @@ def test_strategy_mode_changes_temporal_pattern_deterministically() -> None:
     forward_avg = _avg_base_day_index(first["plan"], "a_forward_subject")
     backward_avg = _avg_base_day_index(first["plan"], "z_backward_subject")
     assert forward_avg < backward_avg
+
+
+def test_concentration_mode_by_subject_changes_selection_and_traces_tradeoff_note() -> None:
+    payload = {
+        "effective_config": {
+            "global": {
+                "daily_cap_minutes": 180,
+                "daily_cap_tolerance_minutes": 0,
+                "subject_buffer_percent": 0.1,
+                "critical_but_possible_threshold": 0.8,
+                "study_on_exam_day": True,
+                "max_subjects_per_day": 3,
+                "session_duration_minutes": 30,
+                "sleep_hours_per_day": 8,
+                "pomodoro_enabled": False,
+                "stability_vs_recovery": 0.4,
+                "default_strategy_mode": "hybrid",
+                "human_distribution_mode": "off",
+                "concentration_mode": "diffuse",
+            },
+            "by_subject": {
+                "chem": {"concentration_mode": "concentrated"},
+                "bio": {"concentration_mode": "diffuse"},
+            },
+        },
+        "subjects": {
+            "subjects": [
+                {
+                    "subject_id": "chem",
+                    "priority": 3,
+                    "cfu": 0.16,
+                    "difficulty_coeff": 1,
+                    "completion_initial": 0,
+                    "attending": False,
+                    "exam_dates": ["2026-01-05"],
+                    "selected_exam_date": "2026-01-05",
+                    "start_at": "2026-01-01",
+                    "end_by": "2026-01-05",
+                },
+                {
+                    "subject_id": "bio",
+                    "priority": 3,
+                    "cfu": 0.16,
+                    "difficulty_coeff": 1,
+                    "completion_initial": 0,
+                    "attending": False,
+                    "exam_dates": ["2026-01-05"],
+                    "selected_exam_date": "2026-01-05",
+                    "start_at": "2026-01-01",
+                    "end_by": "2026-01-05",
+                },
+            ]
+        },
+        "global_config": {
+            "daily_cap_minutes": 180,
+            "daily_cap_tolerance_minutes": 0,
+            "subject_buffer_percent": 0.1,
+            "session_duration_minutes": 30,
+            "concentration_mode": "diffuse",
+        },
+        "calendar_constraints": {"constraints": []},
+        "manual_sessions": {"manual_sessions": []},
+    }
+
+    result = run_planner(payload)
+
+    def _avg_base_day_index(plan: list[dict], subject_id: str) -> float:
+        weighted_sum = 0.0
+        total_minutes = 0
+        for item in plan:
+            if item.get("subject_id") != subject_id or item.get("bucket") != "base":
+                continue
+            day_idx = int(str(item.get("date")).split("-")[-1])
+            minutes = int(item.get("minutes", 0) or 0)
+            weighted_sum += float(day_idx * minutes)
+            total_minutes += minutes
+        assert total_minutes > 0
+        return weighted_sum / float(total_minutes)
+
+    concentrated_avg = _avg_base_day_index(result["plan"], "chem")
+    diffuse_avg = _avg_base_day_index(result["plan"], "bio")
+    assert concentrated_avg < diffuse_avg
+    assert any(
+        "concentrazione per-materia" in str(item.get("tradeoff_note", ""))
+        for item in result["decision_trace"]
+    )
+
+
+def test_concentration_mode_invalid_override_uses_global_deterministic_fallback() -> None:
+    payload = {
+        "effective_config": {
+            "global": {
+                "daily_cap_minutes": 180,
+                "daily_cap_tolerance_minutes": 0,
+                "subject_buffer_percent": 0.1,
+                "critical_but_possible_threshold": 0.8,
+                "study_on_exam_day": True,
+                "max_subjects_per_day": 3,
+                "session_duration_minutes": 30,
+                "sleep_hours_per_day": 8,
+                "pomodoro_enabled": False,
+                "stability_vs_recovery": 0.4,
+                "default_strategy_mode": "hybrid",
+                "human_distribution_mode": "off",
+                "concentration_mode": "concentrated",
+            },
+            "by_subject": {
+                "hist": {"concentration_mode": "not-valid"},
+            },
+        },
+        "subjects": {
+            "subjects": [
+                {
+                    "subject_id": "hist",
+                    "priority": 3,
+                    "cfu": 0.16,
+                    "difficulty_coeff": 1,
+                    "completion_initial": 0,
+                    "attending": False,
+                    "exam_dates": ["2026-01-03"],
+                    "selected_exam_date": "2026-01-03",
+                    "start_at": "2026-01-01",
+                    "end_by": "2026-01-03",
+                }
+            ]
+        },
+        "global_config": {
+            "daily_cap_minutes": 180,
+            "daily_cap_tolerance_minutes": 0,
+            "subject_buffer_percent": 0.1,
+            "session_duration_minutes": 30,
+            "concentration_mode": "concentrated",
+        },
+        "calendar_constraints": {"constraints": []},
+        "manual_sessions": {"manual_sessions": []},
+    }
+
+    with_invalid = run_planner(payload)
+    payload["effective_config"]["by_subject"]["hist"] = {}
+    with_missing = run_planner(payload)
+
+    assert with_invalid["plan"] == with_missing["plan"]

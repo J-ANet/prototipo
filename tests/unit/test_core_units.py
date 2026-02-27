@@ -70,6 +70,7 @@ def test_normalization_precedence_defaults_and_invalid_overrides() -> None:
                     "overrides": {
                         "strategy_mode": "forward",
                         "max_same_subject_streak_days": 2,
+                        "concentration_mode": "concentrated",
                         "unexpected": True,
                     },
                 }
@@ -83,8 +84,10 @@ def test_normalization_precedence_defaults_and_invalid_overrides() -> None:
     assert effective["global"]["human_distribution_mode"] == "off"
     assert effective["global"]["max_same_subject_streak_days"] == 3
     assert effective["global"]["target_daily_subject_variety"] == 2
+    assert effective["global"]["concentration_mode"] == "diffuse"
     assert effective["by_subject"]["s1"]["strategy_mode"] == "forward"
     assert effective["by_subject"]["s1"]["max_same_subject_streak_days"] == 2
+    assert effective["by_subject"]["s1"]["concentration_mode"] == "concentrated"
     assert "unexpected" not in effective["by_subject"]["s1"]
     assert any(err.code == "INVALID_OVERRIDE_KEY" for err in vr.errors)
 
