@@ -6,7 +6,7 @@ from datetime import date, datetime, timezone
 from typing import Any
 
 from .allocator import allocate_plan
-from .rebalance import RULE_REBALANCE_SWAP, rebalance_plan
+from .rebalance import rebalance_allocations
 from .replan import (
     apply_locked_constraints_to_slots,
     build_critical_warnings,
@@ -195,26 +195,18 @@ def run_planner(payload: dict[str, Any]) -> dict[str, Any]:
         decision_trace=decision_trace,
     )
 
-    rebalance_result = rebalance_plan(
+    new_horizon = rebalance_allocations(
         allocations=allocation_result["allocations"],
         slots=constrained_slots,
-        workload=subjects,
-        config=global_config if isinstance(global_config, dict) else {},
+        subjects=subjects,
+        global_config=global_config if isinstance(global_config, dict) else {},
+        config_by_subject=config_by_subject,
+        decision_trace=decision_trace,
+        past_cutoff=window.from_date,
+        max_swaps=int(global_config.get("rebalance_max_swaps", 100) or 100),
+        near_days_window=int(global_config.get("rebalance_near_days_window", 2) or 2),
         locked_allocations=locked_allocations,
-        replan_window=window,
     )
-    new_horizon = rebalance_result["allocations"]
-    for swap in rebalance_result["swaps"]:
-        decision_trace.record(
-            slot_id=f"{swap['slot_a']}|{swap['slot_b']}",
-            candidate_subjects=[swap["subject_a"], swap["subject_b"]],
-            scores_by_subject={swap["subject_a"]: 0.0, swap["subject_b"]: 0.0},
-            selected_subject_id=f"swap:{swap['subject_a']}<->{swap['subject_b']}",
-            applied_rules=[RULE_REBALANCE_SWAP],
-            blocked_constraints=[],
-            tradeoff_note="Swap rebalancing accettato.",
-            confidence_impact=0.003,
-        )
     metrics = compute_reallocation_metrics(previous_horizon, new_horizon)
     humanity_metrics = compute_humanity_metrics(new_horizon)
     warnings, suggestions = build_warnings_and_suggestions(
