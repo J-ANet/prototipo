@@ -160,6 +160,12 @@
         "concentrated"
       ],
       "default": "diffuse"
+    },
+    "humanity_warning_threshold": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "default": 0.45
     }
   },
   "allOf": [

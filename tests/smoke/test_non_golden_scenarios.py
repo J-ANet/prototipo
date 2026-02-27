@@ -243,6 +243,7 @@ def test_smoke_scenario_6_monotony_improves_with_balanced_mode(tmp_path: Path) -
             daily_cap_tolerance_minutes=0,
             human_distribution_mode="off",
             target_daily_subject_variety=2,
+            humanity_warning_threshold=0.6,
         ),
         subjects=base_subjects,
         constraints={"constraints": []},
@@ -257,6 +258,7 @@ def test_smoke_scenario_6_monotony_improves_with_balanced_mode(tmp_path: Path) -
             target_daily_subject_variety=2,
             max_same_subject_streak_days=2,
             max_same_subject_consecutive_blocks=2,
+            humanity_warning_threshold=0.6,
         ),
         subjects=base_subjects,
         constraints={"constraints": []},
@@ -269,6 +271,9 @@ def test_smoke_scenario_6_monotony_improves_with_balanced_mode(tmp_path: Path) -
     assert 0.0 <= off_payload["metrics"]["humanity_score"] <= 1.0
     assert 0.0 <= balanced_payload["metrics"]["humanity_score"] <= 1.0
     assert balanced_payload["metrics"]["humanity_score"] > off_payload["metrics"]["humanity_score"]
+    assert balanced_payload["metrics"]["mono_day_ratio"] <= 1.0
+    assert balanced_payload["metrics"]["max_same_subject_streak_days"] <= 2.0
+    assert balanced_payload["metrics"]["switch_rate"] >= off_payload["metrics"]["switch_rate"]
 
     off_warnings = {item["code"] for item in off_payload["plan_output"]["warnings"]}
     balanced_warnings = {item["code"] for item in balanced_payload["plan_output"]["warnings"]}

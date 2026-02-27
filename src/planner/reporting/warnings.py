@@ -50,7 +50,7 @@ def build_warnings_and_suggestions(
     remaining_base_minutes: dict[str, int],
     remaining_buffer_minutes: dict[str, int],
     humanity_score: float | None = None,
-    humanity_threshold: float = 0.45,
+    humanity_threshold: float | None = 0.45,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Generate mandatory warnings (spec section 15) and coherent suggestions."""
     warnings: list[dict[str, Any]] = []
@@ -235,13 +235,15 @@ def build_warnings_and_suggestions(
                 }
             )
 
-    if computed_humanity < _clamp01(humanity_threshold):
+    threshold = _clamp01(0.45 if humanity_threshold is None else humanity_threshold)
+
+    if computed_humanity < threshold:
         warnings.append(
             {
                 "code": "WARN_PLAN_MONOTONOUS",
                 "severity": "warning",
                 "humanity_score": round(computed_humanity, 4),
-                "threshold": round(_clamp01(humanity_threshold), 4),
+                "threshold": round(threshold, 4),
                 "message": "Distribuzione piano troppo monotona rispetto alla soglia di varietà umana.",
             }
         )

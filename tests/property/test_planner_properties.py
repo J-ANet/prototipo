@@ -68,7 +68,7 @@ def test_determinism_same_input_same_output() -> None:
 def test_metrics_are_clipped_in_0_1() -> None:
     metrics = collect_metrics(run_planner(_payload()))
     for key, value in metrics.items():
-        if isinstance(value, float) and key != "recovery_days":
+        if isinstance(value, float) and key not in {"recovery_days", "max_same_subject_streak_days"}:
             assert 0.0 <= value <= 1.0
 
 
