@@ -198,6 +198,7 @@ def run_planner(payload: dict[str, Any]) -> dict[str, Any]:
         max_swaps=int(global_config.get("rebalance_max_swaps", 100) or 100),
         near_days_window=int(global_config.get("rebalance_near_days_window", 2) or 2),
         locked_allocations=locked_allocations,
+        remaining_base_minutes=allocation_result["remaining_base_minutes"],
     )
     metrics = compute_reallocation_metrics(previous_horizon, new_horizon)
     humanity_metrics = compute_humanity_metrics(new_horizon)
