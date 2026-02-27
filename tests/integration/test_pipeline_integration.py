@@ -497,8 +497,8 @@ def test_mixed_subject_concentration_modes_create_distinct_patterns_in_same_plan
             "subjects": [
                 {
                     "subject_id": "focused_subject",
-                    "priority": 3,
-                    "cfu": 0.2,
+                    "priority": 4,
+                    "cfu": 1.0,
                     "difficulty_coeff": 1,
                     "completion_initial": 0,
                     "attending": False,
@@ -509,8 +509,8 @@ def test_mixed_subject_concentration_modes_create_distinct_patterns_in_same_plan
                 },
                 {
                     "subject_id": "spread_subject",
-                    "priority": 3,
-                    "cfu": 0.2,
+                    "priority": 5,
+                    "cfu": 1.0,
                     "difficulty_coeff": 1,
                     "completion_initial": 0,
                     "attending": False,
@@ -540,6 +540,120 @@ def test_mixed_subject_concentration_modes_create_distinct_patterns_in_same_plan
     assert focused_stats["avg_day_index"] < spread_stats["avg_day_index"]
     assert spread_stats["active_days"] >= focused_stats["active_days"]
 
+
+
+def test_subject_concentration_mixed_overrides_emit_trace_metadata_and_distinct_clustering() -> None:
+    payload = {
+        "effective_config": {
+            "global": {
+                "daily_cap_minutes": 180,
+                "daily_cap_tolerance_minutes": 0,
+                "subject_buffer_percent": 0.1,
+                "critical_but_possible_threshold": 0.8,
+                "study_on_exam_day": True,
+                "max_subjects_per_day": 3,
+                "session_duration_minutes": 30,
+                "sleep_hours_per_day": 8,
+                "pomodoro_enabled": False,
+                "stability_vs_recovery": 0.4,
+                "default_strategy_mode": "hybrid",
+                "human_distribution_mode": "off",
+                "subject_concentration_mode": "concentrated",
+            },
+            "by_subject": {
+                "algebra": {"subject_concentration_mode": "concentrated"},
+                "history": {"subject_concentration_mode": "diffuse"},
+                "biology": {"subject_concentration_mode": "diffuse"},
+            },
+        },
+        "subjects": {
+            "subjects": [
+                {
+                    "subject_id": "algebra",
+                    "priority": 1,
+                    "cfu": 0.1,
+                    "difficulty_coeff": 1,
+                    "completion_initial": 0,
+                    "attending": False,
+                    "exam_dates": ["2026-01-06"],
+                    "selected_exam_date": "2026-01-06",
+                    "start_at": "2026-01-01",
+                    "end_by": "2026-01-06",
+                },
+
+                {
+                    "subject_id": "history",
+                    "priority": 5,
+                    "cfu": 1.0,
+                    "difficulty_coeff": 1,
+                    "completion_initial": 0,
+                    "attending": False,
+                    "exam_dates": ["2026-01-06"],
+                    "selected_exam_date": "2026-01-06",
+                    "start_at": "2026-01-01",
+                    "end_by": "2026-01-06",
+                },
+
+                {
+                    "subject_id": "biology",
+                    "priority": 1,
+                    "cfu": 0.1,
+                    "difficulty_coeff": 1,
+                    "completion_initial": 0,
+                    "attending": False,
+                    "exam_dates": ["2026-01-06"],
+                    "selected_exam_date": "2026-01-06",
+                    "start_at": "2026-01-01",
+                    "end_by": "2026-01-06",
+                },
+            ]
+        },
+        "global_config": {
+            "daily_cap_minutes": 180,
+            "daily_cap_tolerance_minutes": 0,
+            "subject_buffer_percent": 0.1,
+            "session_duration_minutes": 30,
+            "subject_concentration_mode": "concentrated",
+        },
+        "calendar_constraints": {"constraints": []},
+        "manual_sessions": {"manual_sessions": []},
+    }
+
+    result = run_planner(payload)
+
+    stats_by_subject = {
+        sid: _subject_distribution_stats(result["plan"], sid)
+        for sid in ["algebra", "history", "biology"]
+        if any(item.get("subject_id") == sid and item.get("bucket") == "base" for item in result["plan"])
+    }
+    algebra_stats = stats_by_subject["algebra"]
+    trace_by_subject = {
+        sid: [
+            item
+            for item in result["decision_trace"]
+            if item.get("selected_subject_id") == sid and item.get("allocation_metadata", {}).get("phase") == "base"
+        ]
+        for sid in ["algebra", "history", "biology"]
+    }
+
+    assert trace_by_subject["algebra"]
+    assert trace_by_subject["history"]
+
+    for sid, expected_mode in {
+        "algebra": "concentrated",
+        "history": "diffuse",
+    }.items():
+        assert all(
+            item.get("allocation_metadata", {}).get("concentration_mode") == expected_mode
+            for item in trace_by_subject[sid]
+        )
+        assert all(
+            item.get("allocation_metadata", {}).get("concentration_origin") == "subject_override"
+            for item in trace_by_subject[sid]
+        )
+
+    assert algebra_stats["avg_day_index"] <= stats_by_subject["history"]["avg_day_index"]
+    assert algebra_stats["max_block_minutes"] >= stats_by_subject["history"]["max_block_minutes"]
 
 
 def test_concentration_mode_invalid_override_uses_concentrated_deterministic_fallback() -> None:

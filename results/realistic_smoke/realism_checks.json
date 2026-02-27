@@ -15,6 +15,24 @@
           "switch_rate": 0.1613,
           "subject_variety_index": 0.5833
         },
+        "subject_indicators": {
+          "s1": {
+            "concentration_mode": "diffuse",
+            "concentration_origin": "subject_override",
+            "active_days": 3.0,
+            "longest_streak_days": 3.0,
+            "max_day_minutes": 210.0,
+            "clustering_ratio": 0.4375
+          },
+          "s2": {
+            "concentration_mode": "diffuse",
+            "concentration_origin": "subject_override",
+            "active_days": 4.0,
+            "longest_streak_days": 4.0,
+            "max_day_minutes": 240.0,
+            "clustering_ratio": 0.5
+          }
+        },
         "acceptance_checks": {
           "humanity_score": {
             "value": 0.364,
@@ -82,6 +100,24 @@
           "max_same_subject_streak_days": 4.0,
           "switch_rate": 0.1613,
           "subject_variety_index": 0.5833
+        },
+        "subject_indicators": {
+          "s1": {
+            "concentration_mode": "diffuse",
+            "concentration_origin": "subject_override",
+            "active_days": 3.0,
+            "longest_streak_days": 3.0,
+            "max_day_minutes": 210.0,
+            "clustering_ratio": 0.4375
+          },
+          "s2": {
+            "concentration_mode": "diffuse",
+            "concentration_origin": "subject_override",
+            "active_days": 4.0,
+            "longest_streak_days": 4.0,
+            "max_day_minutes": 240.0,
+            "clustering_ratio": 0.5
+          }
         },
         "acceptance_checks": {
           "humanity_score": {
@@ -163,6 +199,24 @@
           "switch_rate": 0.2174,
           "subject_variety_index": 0.6667
         },
+        "subject_indicators": {
+          "s1": {
+            "concentration_mode": "diffuse",
+            "concentration_origin": "subject_override",
+            "active_days": 3.0,
+            "longest_streak_days": 2.0,
+            "max_day_minutes": 120.0,
+            "clustering_ratio": 0.3333
+          },
+          "s2": {
+            "concentration_mode": "diffuse",
+            "concentration_origin": "subject_override",
+            "active_days": 3.0,
+            "longest_streak_days": 2.0,
+            "max_day_minutes": 120.0,
+            "clustering_ratio": 0.3333
+          }
+        },
         "acceptance_checks": {
           "humanity_score": {
             "value": 0.7717,
@@ -231,6 +285,24 @@
           "switch_rate": 0.2174,
           "subject_variety_index": 0.6667
         },
+        "subject_indicators": {
+          "s1": {
+            "concentration_mode": "diffuse",
+            "concentration_origin": "subject_override",
+            "active_days": 3.0,
+            "longest_streak_days": 2.0,
+            "max_day_minutes": 120.0,
+            "clustering_ratio": 0.3333
+          },
+          "s2": {
+            "concentration_mode": "diffuse",
+            "concentration_origin": "subject_override",
+            "active_days": 3.0,
+            "longest_streak_days": 2.0,
+            "max_day_minutes": 120.0,
+            "clustering_ratio": 0.3333
+          }
+        },
         "acceptance_checks": {
           "humanity_score": {
             "value": 0.7717,
@@ -283,6 +355,190 @@
             "value": 0.6667,
             "threshold_min": 0.68,
             "status": "fail"
+          }
+        },
+        "status": "pass",
+        "quality_status": "fail"
+      },
+      "comparison": {
+        "humanity_delta": 0.0,
+        "max_same_subject_streak_days_delta": 0.0,
+        "mono_day_ratio_delta": 0.0
+      },
+      "status": "pass",
+      "quality_status": "fail"
+    },
+    {
+      "scenario": "subject_overrides_mix",
+      "cross_scenario_role": null,
+      "mode": "off",
+      "pre_rebalance": {
+        "rebalance_max_swaps": 0,
+        "accepted_swaps": 0,
+        "metrics": {
+          "confidence_score": 0.6321,
+          "humanity_score": 0.2599,
+          "mono_day_ratio": 0.3333,
+          "max_same_subject_streak_days": 6.0,
+          "switch_rate": 0.1915,
+          "subject_variety_index": 0.6111
+        },
+        "subject_indicators": {
+          "s_focus": {
+            "concentration_mode": "concentrated",
+            "concentration_origin": "subject_override",
+            "active_days": 5.0,
+            "longest_streak_days": 5.0,
+            "max_day_minutes": 210.0,
+            "clustering_ratio": 0.2333
+          },
+          "s_spread_a": {
+            "concentration_mode": "diffuse",
+            "concentration_origin": "subject_override",
+            "active_days": 6.0,
+            "longest_streak_days": 6.0,
+            "max_day_minutes": 240.0,
+            "clustering_ratio": 0.4444
+          }
+        },
+        "acceptance_checks": {
+          "humanity_score": {
+            "value": 0.2599,
+            "threshold_min": 0.25,
+            "status": "pass"
+          },
+          "mono_day_ratio": {
+            "value": 0.3333,
+            "threshold_max": 1.0,
+            "status": "pass"
+          },
+          "switch_rate": {
+            "value": 0.1915,
+            "threshold_min": 0.05,
+            "status": "pass"
+          },
+          "max_same_subject_streak_days": {
+            "value": 6.0,
+            "threshold_max": 6,
+            "status": "pass"
+          },
+          "subject_variety_index": {
+            "value": 0.6111,
+            "threshold_min": 0.2,
+            "status": "pass"
+          }
+        },
+        "quality_checks": {
+          "humanity_score": {
+            "value": 0.2599,
+            "threshold_min": 0.5,
+            "status": "fail"
+          },
+          "mono_day_ratio": {
+            "value": 0.3333,
+            "threshold_max": 0.95,
+            "status": "pass"
+          },
+          "switch_rate": {
+            "value": 0.1915,
+            "threshold_min": 0.1,
+            "status": "pass"
+          },
+          "max_same_subject_streak_days": {
+            "value": 6.0,
+            "threshold_max": 5,
+            "status": "fail"
+          },
+          "subject_variety_index": {
+            "value": 0.6111,
+            "threshold_min": 0.3,
+            "status": "pass"
+          }
+        },
+        "status": "pass",
+        "quality_status": "fail"
+      },
+      "post_rebalance": {
+        "rebalance_max_swaps": 20,
+        "accepted_swaps": 0,
+        "metrics": {
+          "confidence_score": 0.6321,
+          "humanity_score": 0.2599,
+          "mono_day_ratio": 0.3333,
+          "max_same_subject_streak_days": 6.0,
+          "switch_rate": 0.1915,
+          "subject_variety_index": 0.6111
+        },
+        "subject_indicators": {
+          "s_focus": {
+            "concentration_mode": "concentrated",
+            "concentration_origin": "subject_override",
+            "active_days": 5.0,
+            "longest_streak_days": 5.0,
+            "max_day_minutes": 210.0,
+            "clustering_ratio": 0.2333
+          },
+          "s_spread_a": {
+            "concentration_mode": "diffuse",
+            "concentration_origin": "subject_override",
+            "active_days": 6.0,
+            "longest_streak_days": 6.0,
+            "max_day_minutes": 240.0,
+            "clustering_ratio": 0.4444
+          }
+        },
+        "acceptance_checks": {
+          "humanity_score": {
+            "value": 0.2599,
+            "threshold_min": 0.25,
+            "status": "pass"
+          },
+          "mono_day_ratio": {
+            "value": 0.3333,
+            "threshold_max": 1.0,
+            "status": "pass"
+          },
+          "switch_rate": {
+            "value": 0.1915,
+            "threshold_min": 0.05,
+            "status": "pass"
+          },
+          "max_same_subject_streak_days": {
+            "value": 6.0,
+            "threshold_max": 6,
+            "status": "pass"
+          },
+          "subject_variety_index": {
+            "value": 0.6111,
+            "threshold_min": 0.2,
+            "status": "pass"
+          }
+        },
+        "quality_checks": {
+          "humanity_score": {
+            "value": 0.2599,
+            "threshold_min": 0.5,
+            "status": "fail"
+          },
+          "mono_day_ratio": {
+            "value": 0.3333,
+            "threshold_max": 0.95,
+            "status": "pass"
+          },
+          "switch_rate": {
+            "value": 0.1915,
+            "threshold_min": 0.1,
+            "status": "pass"
+          },
+          "max_same_subject_streak_days": {
+            "value": 6.0,
+            "threshold_max": 5,
+            "status": "fail"
+          },
+          "subject_variety_index": {
+            "value": 0.6111,
+            "threshold_min": 0.3,
+            "status": "pass"
           }
         },
         "status": "pass",

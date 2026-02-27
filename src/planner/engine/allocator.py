@@ -347,16 +347,40 @@ def allocate_plan(
         sid: str((strategy_mode_by_subject or {}).get(sid, fallback_strategy_mode_by_subject.get(sid, default_strategy_mode))).lower()
         for sid in fallback_strategy_mode_by_subject
     }
+    strategy_mode_source_by_subject = {
+        sid: (
+            "resolved_override"
+            if sid in (strategy_mode_by_subject or {})
+            else (
+                "subject_override"
+                if "strategy_mode" in ((config_by_subject or {}).get(sid, {}))
+                else "global_default"
+            )
+        )
+        for sid in fallback_strategy_mode_by_subject
+    }
     per_subject_concentration_mode: dict[str, str] = {}
     concentration_mode_source: dict[str, str] = {}
+    concentration_mode_origin_by_subject: dict[str, str] = {}
     for subject in ordered_subjects:
         sid = str(subject.get("subject_id", ""))
         resolved_mode, resolution = _resolve_concentration_mode(
             (subject_concentration_mode_by_subject or {}).get(sid),
             fallback="concentrated",
         )
+        subject_cfg = (config_by_subject or {}).get(sid, {})
+        has_subject_override = "subject_concentration_mode" in subject_cfg or "concentration_mode" in subject_cfg
         per_subject_concentration_mode[sid] = resolved_mode
         concentration_mode_source[sid] = resolution
+        concentration_mode_origin_by_subject[sid] = (
+            "subject_override"
+            if has_subject_override and resolution == "explicit"
+            else (
+                "subject_override_fallback"
+                if has_subject_override and resolution in {"invalid", "missing"}
+                else "default"
+            )
+        )
     day_subject_set: dict[date, set[str]] = defaultdict(set)
     day_last_subject: dict[date, str] = {}
     day_consecutive_blocks: dict[date, int] = defaultdict(int)
@@ -516,6 +540,14 @@ def allocate_plan(
                     blocked_constraints=[],
                     tradeoff_note=tradeoff_note,
                     confidence_impact=0.01,
+                    allocation_metadata={
+                        "phase": "base",
+                        "strategy_mode": effective_strategy_mode_by_subject.get(sid, "hybrid"),
+                        "strategy_mode_source": strategy_mode_source_by_subject.get(sid, "global_default"),
+                        "concentration_mode": concentration_meta["mode"],
+                        "concentration_resolution": concentration_resolution,
+                        "concentration_origin": concentration_mode_origin_by_subject.get(sid, "default"),
+                    },
                 )
             remaining_base[sid] -= chunk
             available -= chunk
