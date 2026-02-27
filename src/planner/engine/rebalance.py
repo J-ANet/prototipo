@@ -10,6 +10,8 @@ from planner.metrics.collector import compute_humanity_metrics
 
 
 RULE_REBALANCE_SWAP = "RULE_REBALANCE_SWAP"
+RULE_REBALANCE_REJECTED = "RULE_REBALANCE_REJECTED"
+RULE_REBALANCE_FALLBACK_SWAP = "RULE_REBALANCE_FALLBACK_SWAP"
 
 
 def _parse_date(raw: Any) -> date | None:
@@ -166,6 +168,18 @@ def _humanity_improves(before: dict[str, float], after: dict[str, float]) -> tup
     return (len(improvements) > 0, ", ".join(improvements))
 
 
+def _humanity_non_worsening_subset(before: dict[str, float], after: dict[str, float]) -> tuple[bool, tuple[float, float]]:
+    """Allow fallback on a stable subset of humanity metrics.
+
+    Subset: mono_day_ratio, streak_days (both lower is better).
+    Returns acceptance and improvement tuple (delta_mono, delta_streak).
+    """
+    delta_mono = after["mono_day_ratio"] - before["mono_day_ratio"]
+    delta_streak = after["streak_days"] - before["streak_days"]
+    non_worsening = delta_mono <= 0.0 and delta_streak <= 0.0
+    return (non_worsening, (delta_mono, delta_streak))
+
+
 
 
 def _strategy_mode_by_subject(
@@ -212,6 +226,8 @@ def rebalance_allocations(
     max_swaps = max(0, min(max_swaps, configured_max_swaps))
     max_iterations = max(0, configured_max_iterations)
     near_days_window = max(0, int(global_config.get("rebalance_near_days_window", near_days_window) or near_days_window))
+    require_strategy_mode_match = bool(global_config.get("rebalance_require_strategy_mode_match", True))
+    enforce_near_days_window = bool(global_config.get("rebalance_enforce_near_days_window", True))
 
     locked = locked_allocations if isinstance(locked_allocations, list) else []
     locked_slot_ids = {str(item.get("slot_id", "")) for item in locked}
@@ -222,10 +238,12 @@ def rebalance_allocations(
 
     accepted = 0
     iterations = 0
+    fallback_accepted = False
     while accepted < max_swaps and iterations < max_iterations:
         iterations += 1
         base_feasibility = _feasibility_score(working, allowed_minutes_by_day=allowed, subject_windows=windows)
         before_h = _humanity_vector(working)
+        rejected_counts: dict[str, int] = defaultdict(int)
 
         candidates: list[tuple[tuple[str, str, str, str, str, str], int, int]] = []
         for idx_a, alloc_a in enumerate(working):
@@ -241,31 +259,45 @@ def rebalance_allocations(
                 alloc_b = working[idx_b]
                 sid_b = str(alloc_b.get("subject_id", ""))
                 if sid_b in {"", "__slack__"} or sid_a == sid_b:
+                    rejected_counts["same_or_empty_subject"] += 1
                     continue
-                if strategy_modes.get(sid_a, "hybrid") != strategy_modes.get(sid_b, "hybrid"):
+                if require_strategy_mode_match and strategy_modes.get(sid_a, "hybrid") != strategy_modes.get(sid_b, "hybrid"):
+                    rejected_counts["strategy_mode_mismatch"] += 1
                     continue
                 if _is_immutable(alloc_b, locked_slot_ids=locked_slot_ids, locked_dates=locked_dates, past_cutoff=past_cutoff):
+                    rejected_counts["immutable_b"] += 1
                     continue
                 day_b = _parse_date(alloc_b.get("date"))
-                if day_b is None or abs((day_a - day_b).days) > near_days_window:
+                if day_b is None:
+                    rejected_counts["invalid_date_b"] += 1
+                    continue
+                if enforce_near_days_window and abs((day_a - day_b).days) > near_days_window:
+                    rejected_counts["near_days_window"] += 1
                     continue
                 if str(alloc_a.get("bucket", "")) != str(alloc_b.get("bucket", "")):
+                    rejected_counts["bucket_mismatch"] += 1
                     continue
 
                 # Respect time windows and exam proximity after the swap.
                 a_on_b = windows.get(sid_a, {})
                 b_on_a = windows.get(sid_b, {})
                 if a_on_b.get("start_at") is not None and day_b < a_on_b["start_at"]:
+                    rejected_counts["window_start_a"] += 1
                     continue
                 if a_on_b.get("end_by") is not None and day_b > a_on_b["end_by"]:
+                    rejected_counts["window_end_a"] += 1
                     continue
                 if a_on_b.get("exam_date") is not None and day_b > a_on_b["exam_date"]:
+                    rejected_counts["window_exam_a"] += 1
                     continue
                 if b_on_a.get("start_at") is not None and day_a < b_on_a["start_at"]:
+                    rejected_counts["window_start_b"] += 1
                     continue
                 if b_on_a.get("end_by") is not None and day_a > b_on_a["end_by"]:
+                    rejected_counts["window_end_b"] += 1
                     continue
                 if b_on_a.get("exam_date") is not None and day_a > b_on_a["exam_date"]:
+                    rejected_counts["window_exam_b"] += 1
                     continue
 
                 key = (
@@ -282,6 +314,7 @@ def rebalance_allocations(
             break
 
         improved = False
+        fallback_choice: tuple[tuple[str, str, str, str, str, str], int, int, float, float, float] | None = None
         for _, idx_a, idx_b in sorted(candidates, key=lambda x: x[0]):
             proposal = [dict(item) for item in working]
             subject_a = str(proposal[idx_a].get("subject_id", ""))
@@ -290,17 +323,37 @@ def rebalance_allocations(
             proposal[idx_b]["subject_id"] = subject_a
 
             if not _respects_max_subjects_per_day(proposal, max_subjects_per_day=max_subjects_per_day):
+                rejected_counts["max_subjects_per_day"] += 1
                 continue
             if not _respects_base_before_buffer(proposal, remaining_base_minutes):
+                rejected_counts["base_before_buffer"] += 1
                 continue
 
             proposal_feasibility = _feasibility_score(proposal, allowed_minutes_by_day=allowed, subject_windows=windows)
             if proposal_feasibility + feasibility_regression_tolerance < base_feasibility:
+                rejected_counts["feasibility_regression"] += 1
                 continue
 
             after_h = _humanity_vector(proposal)
             improves, improved_metrics = _humanity_improves(before_h, after_h)
             if not improves:
+                fallback_ok, (delta_mono, delta_streak) = _humanity_non_worsening_subset(before_h, after_h)
+                if not fallback_ok:
+                    rejected_counts["no_humanity_improvement"] += 1
+                    continue
+                key = (
+                    str(working[idx_a].get("date", "")),
+                    subject_a,
+                    str(working[idx_a].get("slot_id", "")),
+                    str(working[idx_b].get("date", "")),
+                    subject_b,
+                    str(working[idx_b].get("slot_id", "")),
+                )
+                candidate_score = (delta_mono, delta_streak, -proposal_feasibility)
+                if fallback_choice is None or candidate_score < (fallback_choice[3], fallback_choice[4], fallback_choice[5]) or (
+                    candidate_score == (fallback_choice[3], fallback_choice[4], fallback_choice[5]) and key < fallback_choice[0]
+                ):
+                    fallback_choice = (key, idx_a, idx_b, delta_mono, delta_streak, proposal_feasibility)
                 continue
 
             working = proposal
@@ -321,6 +374,46 @@ def rebalance_allocations(
                     confidence_impact=0.002 if proposal_feasibility == base_feasibility else 0.003,
                 )
             break
+
+        if not improved and fallback_choice is not None and not fallback_accepted:
+            _, idx_a, idx_b, delta_mono, delta_streak, proposal_feasibility = fallback_choice
+            proposal = [dict(item) for item in working]
+            subject_a = str(proposal[idx_a].get("subject_id", ""))
+            subject_b = str(proposal[idx_b].get("subject_id", ""))
+            proposal[idx_a]["subject_id"] = subject_b
+            proposal[idx_b]["subject_id"] = subject_a
+            working = proposal
+            accepted += 1
+            improved = True
+            fallback_accepted = True
+            if decision_trace is not None:
+                decision_trace.record(
+                    slot_id=f"{working[idx_a].get('slot_id', '')}|{working[idx_b].get('slot_id', '')}",
+                    candidate_subjects=[subject_a, subject_b],
+                    scores_by_subject={subject_a: 0.0, subject_b: 0.0},
+                    selected_subject_id=f"fallback_swap:{subject_a}<->{subject_b}",
+                    applied_rules=[RULE_REBALANCE_FALLBACK_SWAP],
+                    blocked_constraints=[],
+                    tradeoff_note=(
+                        "Fallback swap accepted (non-worsening humanity subset: "
+                        f"delta_mono={delta_mono:.4f}, delta_streak={delta_streak:.4f}); "
+                        f"feasibility {base_feasibility:.3f}->{proposal_feasibility:.3f}."
+                    ),
+                    confidence_impact=0.001,
+                )
+
+        if decision_trace is not None and rejected_counts:
+            summary = ", ".join(f"{reason}={count}" for reason, count in sorted(rejected_counts.items()))
+            decision_trace.record(
+                slot_id="rebalance-iteration",
+                candidate_subjects=[],
+                scores_by_subject={},
+                selected_subject_id="none",
+                applied_rules=[RULE_REBALANCE_REJECTED],
+                blocked_constraints=sorted(rejected_counts.keys()),
+                tradeoff_note=f"Rejected candidate reasons: {summary}",
+                confidence_impact=0.0,
+            )
 
         if not improved:
             break

@@ -955,3 +955,83 @@ def test_phase1_forward_vs_backward_changes_candidate_timing_with_same_input() -
 
     assert any("RULE_STRATEGY_FORWARD" in item.get("applied_rules", []) for item in forward_result["decision_trace"])
     assert any("RULE_STRATEGY_BACKWARD" in item.get("applied_rules", []) for item in backward_result["decision_trace"])
+
+
+def test_rebalance_enabled_produces_at_least_one_accepted_swap() -> None:
+    payload = {
+        "effective_config": {
+            "global": {
+                "daily_cap_minutes": 180,
+                "daily_cap_tolerance_minutes": 0,
+                "subject_buffer_percent": 0.1,
+                "critical_but_possible_threshold": 0.8,
+                "study_on_exam_day": True,
+                "max_subjects_per_day": 3,
+                "session_duration_minutes": 30,
+                "sleep_hours_per_day": 8,
+                "pomodoro_enabled": False,
+                "default_strategy_mode": "hybrid",
+                "rebalance_max_swaps": 1,
+                "rebalance_near_days_window": 10,
+                "rebalance_enforce_near_days_window": False,
+                "rebalance_require_strategy_mode_match": False,
+            },
+            "by_subject": {},
+        },
+        "subjects": {
+            "subjects": [
+                {
+                    "subject_id": "math",
+                    "priority": 2,
+                    "cfu": 1,
+                    "difficulty_coeff": 1,
+                    "completion_initial": 0,
+                    "attending": False,
+                    "exam_dates": ["2026-01-04"],
+                    "selected_exam_date": "2026-01-04",
+                    "start_at": "2026-01-01",
+                    "end_by": "2026-01-04",
+                },
+                {
+                    "subject_id": "physics",
+                    "priority": 2,
+                    "cfu": 1,
+                    "difficulty_coeff": 1,
+                    "completion_initial": 0,
+                    "attending": False,
+                    "exam_dates": ["2026-01-04"],
+                    "selected_exam_date": "2026-01-04",
+                    "start_at": "2026-01-01",
+                    "end_by": "2026-01-04",
+                },
+            ]
+        },
+        "global_config": {
+            "daily_cap_minutes": 180,
+            "daily_cap_tolerance_minutes": 0,
+            "subject_buffer_percent": 0.1,
+            "critical_but_possible_threshold": 0.8,
+            "study_on_exam_day": True,
+            "max_subjects_per_day": 3,
+            "session_duration_minutes": 30,
+            "sleep_hours_per_day": 8,
+            "pomodoro_enabled": False,
+            "default_strategy_mode": "hybrid",
+            "rebalance_max_swaps": 1,
+            "rebalance_near_days_window": 10,
+            "rebalance_enforce_near_days_window": False,
+            "rebalance_require_strategy_mode_match": False,
+        },
+        "calendar_constraints": {"constraints": []},
+        "manual_sessions": {"manual_sessions": []},
+    }
+
+    result = run_planner(payload)
+    accepted_swaps = sum(
+        1
+        for item in result["decision_trace"]
+        if "RULE_REBALANCE_SWAP" in item.get("applied_rules", [])
+        or "RULE_REBALANCE_FALLBACK_SWAP" in item.get("applied_rules", [])
+    )
+
+    assert accepted_swaps > 0
