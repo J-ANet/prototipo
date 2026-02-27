@@ -1,0 +1,42 @@
+{
+  "opinion_thresholds": [
+    {
+      "label": "marginale",
+      "max_abs_delta": 0.1499
+    },
+    {
+      "label": "moderato",
+      "max_abs_delta": 0.2999
+    },
+    {
+      "label": "forte",
+      "max_abs_delta": 1.0
+    }
+  ],
+  "comparisons": [
+    {
+      "scenario": "off_monotone",
+      "humanity_delta": 0.0,
+      "opinion": {
+        "label": "marginale",
+        "text": "Impatto marginale (stabile) su humanity_score: \u0394=+0.0000."
+      },
+      "mono_day_ratio": {
+        "pre": 0.5,
+        "post": 0.5
+      }
+    },
+    {
+      "scenario": "balanced_diffuse",
+      "humanity_delta": 0.0,
+      "opinion": {
+        "label": "marginale",
+        "text": "Impatto marginale (stabile) su humanity_score: \u0394=+0.0000."
+      },
+      "mono_day_ratio": {
+        "pre": 1.0,
+        "post": 1.0
+      }
+    }
+  ]
+}

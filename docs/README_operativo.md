@@ -452,3 +452,15 @@ Azioni consigliate:
 - riduci `subject_buffer_percent`;
 - usa `strategy_mode: "forward"` su materie con molto base da smaltire presto;
 - in replan, verifica che non ci siano troppe sessioni lockate e nessuna capacità nuova.
+
+---
+
+## Soglie testuali report audit realistic smoke
+
+Nel report audit `results/realistic_smoke/README.md` la sezione **Opinione** è classificata in modo data-driven (fonte: `results/realistic_smoke/comparisons.json`) usando `abs(humanity_delta)` con soglie esplicite:
+
+- **marginale**: `abs(delta) <= 0.1499`
+- **moderato**: `0.1500 <= abs(delta) <= 0.2999`
+- **forte**: `abs(delta) >= 0.3000`
+
+Queste soglie sono validate internamente durante la generazione: se etichetta testuale e delta numerico non sono coerenti, la generazione termina con errore.
