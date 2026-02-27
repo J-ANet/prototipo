@@ -14,6 +14,7 @@ _SPEC.loader.exec_module(_generate_realistic_smoke)
 
 _build_opinion_thresholds = _generate_realistic_smoke._build_opinion_thresholds
 _format_opinion_line = _generate_realistic_smoke._format_opinion_line
+_opinion_payload = _generate_realistic_smoke._opinion_payload
 _validate_comparisons_consistency = _generate_realistic_smoke._validate_comparisons_consistency
 build_comparisons_report = _generate_realistic_smoke.build_comparisons_report
 classify_humanity_delta = _generate_realistic_smoke.classify_humanity_delta
@@ -142,7 +143,7 @@ def test_format_opinion_line_keeps_delta_and_direction_coherent() -> None:
     item = {
         "scenario": "scenario_coerente",
         "humanity_delta": -0.3123,
-        "opinion": {"label": "forte", "text": "unused"},
+        "opinion": {"label": "forte", "direction": "negative", "trend": "peggioramento", "text": "unused"},
         "mono_day_ratio": {"pre": 1.0, "post": 0.7},
     }
 
@@ -150,8 +151,31 @@ def test_format_opinion_line_keeps_delta_and_direction_coherent() -> None:
 
     assert "**scenario_coerente**" in line
     assert "impatto **forte**" in line
-    assert "(calo)" in line
+    assert "peggioramento" in line
     assert "Δ=-0.3123" in line
+
+
+@pytest.mark.parametrize(
+    ("delta", "expected_direction", "expected_trend", "expected_label"),
+    [
+        (0.0, "neutral", "stabile", "marginale"),
+        (0.2, "positive", "miglioramento", "moderato"),
+        (-0.45, "negative", "peggioramento", "forte"),
+    ],
+)
+def test_opinion_payload_keeps_text_label_and_delta_sign_coherent(
+    delta: float,
+    expected_direction: str,
+    expected_trend: str,
+    expected_label: str,
+) -> None:
+    payload = _opinion_payload(delta, _build_opinion_thresholds())
+
+    assert payload["label"] == expected_label
+    assert payload["direction"] == expected_direction
+    assert payload["trend"] == expected_trend
+    assert expected_trend in payload["text"]
+    assert f"Δ={delta:+.4f}" in payload["text"]
 
 
 def test_validate_comparisons_fails_on_incoherent_label_delta() -> None:
@@ -161,7 +185,12 @@ def test_validate_comparisons_fails_on_incoherent_label_delta() -> None:
             {
                 "scenario": "bad_case",
                 "humanity_delta": 0.35,
-                "opinion": {"label": "marginale", "text": "Impatto marginale"},
+                "opinion": {
+                    "label": "marginale",
+                    "direction": "positive",
+                    "trend": "miglioramento",
+                    "text": "Impatto marginale",
+                },
                 "mono_day_ratio": {"pre": 1.0, "post": 0.8},
             }
         ],
@@ -212,11 +241,15 @@ def test_evaluate_metrics_exposes_acceptance_and_quality_statuses() -> None:
 
 def test_build_results_readme_mentions_double_gate_status() -> None:
     report = {
+        "scenarios": [
+            {"post_rebalance": {"accepted_swaps": 1}},
+            {"post_rebalance": {"accepted_swaps": 0}},
+        ],
         "summary": {
             "status": "pass",
             "quality_status": "fail",
             "humanity_delta": 0.1234,
-        }
+        },
     }
     comparisons = {
         "opinion_thresholds": _build_opinion_thresholds(),
@@ -232,7 +265,12 @@ def test_build_results_readme_mentions_double_gate_status() -> None:
             {
                 "scenario": "balanced_diffuse",
                 "humanity_delta": 0.12,
-                "opinion": {"label": "moderato", "text": "unused"},
+                "opinion": {
+                    "label": "moderato",
+                    "direction": "positive",
+                    "trend": "miglioramento",
+                    "text": "unused",
+                },
                 "mono_day_ratio": {"pre": 0.9, "post": 0.7},
             }
         ],
@@ -243,3 +281,46 @@ def test_build_results_readme_mentions_double_gate_status() -> None:
     assert "Acceptance status (`summary.status`): **pass**" in readme
     assert "Quality status (`summary.quality_status`): **fail**" in readme
     assert "pass ma da migliorare" in readme
+
+
+def test_build_results_readme_adds_limitations_when_no_swaps_are_accepted() -> None:
+    report = {
+        "scenarios": [
+            {"post_rebalance": {"accepted_swaps": 0}},
+            {"post_rebalance": {"accepted_swaps": 0}},
+        ],
+        "summary": {
+            "status": "pass",
+            "quality_status": "pass",
+            "humanity_delta": 0.0,
+        },
+    }
+    comparisons = {
+        "opinion_thresholds": _build_opinion_thresholds(),
+        "cross_scenario": {
+            "forward_scenario": "off_monotone",
+            "backward_scenario": "balanced_diffuse",
+            "backward_minus_forward_humanity_score": 0.0,
+            "backward_minus_forward_mono_day_ratio": 0.0,
+            "backward_minus_forward_max_streak_days": 0.0,
+            "backward_minus_forward_switch_rate": 0.0,
+        },
+        "comparisons": [
+            {
+                "scenario": "balanced_diffuse",
+                "humanity_delta": 0.0,
+                "opinion": {
+                    "label": "marginale",
+                    "direction": "neutral",
+                    "trend": "stabile",
+                    "text": "unused",
+                },
+                "mono_day_ratio": {"pre": 0.9, "post": 0.9},
+            }
+        ],
+    }
+
+    readme = _generate_realistic_smoke.build_results_readme(report, comparisons)
+
+    assert "## Limitazioni del run" in readme
+    assert "accepted_swaps == 0" in readme
