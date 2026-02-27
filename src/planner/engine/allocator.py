@@ -148,6 +148,37 @@ def _strategy_rule(mode: str) -> str:
         return "RULE_STRATEGY_MODE_BACKWARD"
     return "RULE_STRATEGY_MODE_HYBRID"
 
+
+
+def _normalize_concentration_mode(raw_mode: Any, fallback: str = "diffuse") -> str:
+    mode = str(raw_mode or "").lower()
+    if mode in {"diffuse", "concentrated"}:
+        return mode
+    return fallback
+
+
+def _concentration_multiplier(mode: str) -> float:
+    if mode == "concentrated":
+        return 1.03
+    return 1.0
+
+
+def _concentration_bias(mode: str) -> float:
+    if mode == "concentrated":
+        return 0.01
+    return 0.0
+
+
+def _concentration_adjusted_features(features: dict[str, float], mode: str) -> dict[str, float]:
+    adjusted = dict(features)
+    concentration_penalty = float(adjusted.get("concentration_penalty", 0.0))
+    if mode == "concentrated":
+        adjusted["concentration_penalty"] = concentration_penalty * 0.5
+        return adjusted
+    adjusted["concentration_penalty"] = concentration_penalty
+    return adjusted
+
+
 def allocate_plan(
     *,
     slots: list[dict[str, Any]],
@@ -158,6 +189,8 @@ def allocate_plan(
     continuity_config: dict[str, float | int | bool] | None = None,
     distribution_config: dict[str, Any] | None = None,
     config_by_subject: dict[str, dict[str, Any]] | None = None,
+    concentration_mode_by_subject: dict[str, str] | None = None,
+    global_concentration_mode: str = "diffuse",
     decision_trace: DecisionTraceCollector | None = None,
 ) -> dict[str, Any]:
     """Allocate minutes with deterministic iteration and tie-breaks."""
@@ -201,6 +234,23 @@ def allocate_plan(
         ).lower()
         for subject in ordered_subjects
     }
+    normalized_global_concentration_mode = _normalize_concentration_mode(global_concentration_mode)
+    per_subject_concentration_mode: dict[str, str] = {}
+    concentration_mode_source: dict[str, str] = {}
+    for subject in ordered_subjects:
+        sid = str(subject.get("subject_id", ""))
+        explicit_mode = (concentration_mode_by_subject or {}).get(sid)
+        if explicit_mode is None:
+            explicit_mode = (config_by_subject or {}).get(sid, {}).get("concentration_mode")
+        if explicit_mode is None:
+            per_subject_concentration_mode[sid] = normalized_global_concentration_mode
+            concentration_mode_source[sid] = "global_fallback"
+            continue
+        per_subject_concentration_mode[sid] = _normalize_concentration_mode(
+            explicit_mode,
+            fallback=normalized_global_concentration_mode,
+        )
+        concentration_mode_source[sid] = "subject"
     day_subject_set: dict[date, set[str]] = defaultdict(set)
     day_last_subject: dict[date, str] = {}
     day_consecutive_blocks: dict[date, int] = defaultdict(int)
@@ -235,6 +285,7 @@ def allocate_plan(
 
         while available >= session_minutes:
             candidates: list[tuple[float, tuple[int, int, str], dict[str, Any]]] = []
+            concentration_influence_by_subject: dict[str, bool] = {}
             for subject in day_subjects:
                 sid = str(subject["subject_id"])
                 if remaining_base[sid] <= 0:
@@ -261,7 +312,9 @@ def allocate_plan(
                     - len(unique_subjects_today | {sid}),
                 )
                 soft_penalty = float(dist_cfg.get("penalty_multiplier", 0.0)) * float(variety_missing) * 0.25
-                base_score = compute_score({**features, "streak_penalty": continuity_penalty + soft_penalty})
+                concentration_mode = per_subject_concentration_mode.get(sid, normalized_global_concentration_mode)
+                adjusted_features = _concentration_adjusted_features(features, concentration_mode)
+                base_score = compute_score({**adjusted_features, "streak_penalty": continuity_penalty + soft_penalty})
                 strategy_mode = strategy_mode_by_subject.get(sid, "hybrid")
                 strategy_weight = _strategy_weight(
                     subject_id=sid,
@@ -272,9 +325,11 @@ def allocate_plan(
                 # Keep Phase 1 mostly neutral for hybrid.
                 if strategy_mode == "hybrid":
                     strategy_weight = 1.0 + (strategy_weight - 1.0) * 0.25
-                score = base_score * strategy_weight
+                concentration_multiplier = _concentration_multiplier(concentration_mode)
+                score = (base_score + _concentration_bias(concentration_mode)) * strategy_weight * concentration_multiplier
                 tie = deterministic_tie_breaker_key(subject, reference_day=slot["date"])
                 candidates.append((score, tie, subject))
+                concentration_influence_by_subject[sid] = concentration_mode_source.get(sid) == "subject"
 
             if not candidates:
                 break
@@ -286,7 +341,7 @@ def allocate_plan(
             tradeoff_note = "Selezione con punteggio massimo e tie-break deterministico."
 
             if _is_same_day_block_limit_exceeded(str(chosen["subject_id"]), day):
-                for idx, candidate in enumerate(candidates[1:], start=1):
+                for candidate in candidates[1:]:
                     candidate_subject = candidate[2]
                     if not _is_same_day_block_limit_exceeded(str(candidate_subject["subject_id"]), day):
                         chosen = candidate_subject
@@ -301,6 +356,9 @@ def allocate_plan(
                     )
 
             sid = str(chosen["subject_id"])
+            concentration_mode_impacted_choice = concentration_influence_by_subject.get(sid, False)
+            if concentration_mode_impacted_choice:
+                tradeoff_note = f"{tradeoff_note} Modalità concentrazione per-materia applicata alla valutazione candidati."
             chunk = min(session_minutes, available, remaining_base[sid])
             _alloc_chunk(subject_id=sid, slot=slot, minutes=chunk, bucket="base", out=allocations)
             if decision_trace is not None:
@@ -308,6 +366,8 @@ def allocate_plan(
                 applied_rules.append(_strategy_rule(strategy_mode_by_subject.get(sid, "hybrid")))
                 if forced_second_choice:
                     applied_rules.append("RULE_LIMIT_CONSECUTIVE_BLOCKS")
+                if concentration_mode_impacted_choice:
+                    applied_rules.append("RULE_CONCENTRATION_MODE_PER_SUBJECT")
                 decision_trace.record(
                     slot_id=str(slot["slot_id"]),
                     candidate_subjects=[str(item[2]["subject_id"]) for item in candidates],

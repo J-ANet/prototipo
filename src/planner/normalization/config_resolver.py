@@ -24,6 +24,7 @@ DEFAULT_GLOBAL_CONFIG: dict[str, Any] = {
     "max_same_subject_streak_days": 3,
     "max_same_subject_consecutive_blocks": 3,
     "target_daily_subject_variety": 2,
+    "concentration_mode": "diffuse",
 }
 
 _ALLOWED_OVERRIDE_KEYS = {
@@ -43,6 +44,7 @@ _ALLOWED_OVERRIDE_KEYS = {
     "human_distribution_mode",
     "max_same_subject_streak_days",
     "max_same_subject_consecutive_blocks",
+    "concentration_mode",
 }
 
 
