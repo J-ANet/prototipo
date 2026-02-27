@@ -92,7 +92,9 @@ def _derive_horizon(subjects: list[dict[str, Any]]) -> tuple[date, date]:
 
 def run_planner(payload: dict[str, Any]) -> dict[str, Any]:
     """Run planner with replan constraints and manual-session integration."""
-    global_config = payload.get("effective_config", {}).get("global", payload.get("global_config", {}))
+    effective_config = payload.get("effective_config", {}) if isinstance(payload.get("effective_config"), dict) else {}
+    global_config = effective_config.get("global", payload.get("global_config", {}))
+    config_by_subject = effective_config.get("by_subject", {}) if isinstance(effective_config.get("by_subject"), dict) else {}
     subjects = _extract_subjects(payload)
     manual_sessions = _extract_manual_sessions(payload)
     constraints = _extract_calendar_constraints(payload)
@@ -155,7 +157,7 @@ def run_planner(payload: dict[str, Any]) -> dict[str, Any]:
             "max_same_subject_consecutive_blocks": global_config.get("max_same_subject_consecutive_blocks", 3),
             "target_daily_subject_variety": global_config.get("target_daily_subject_variety", 2),
         },
-        config_by_subject=payload.get("effective_config", {}).get("by_subject", {}),
+        config_by_subject=config_by_subject,
         decision_trace=decision_trace,
     )
 
