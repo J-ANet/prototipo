@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import defaultdict
 from datetime import date
 from typing import Any
 
@@ -22,183 +23,226 @@ def _parse_date(raw: Any) -> date | None:
     return None
 
 
-def _extract_subject_windows(workload: list[dict[str, Any]]) -> dict[str, tuple[date | None, date | None]]:
-    windows: dict[str, tuple[date | None, date | None]] = {}
-    for subject in workload:
+def _subject_windows(subjects: list[dict[str, Any]]) -> dict[str, dict[str, date | None]]:
+    windows: dict[str, dict[str, date | None]] = {}
+    for subject in subjects:
         sid = str(subject.get("subject_id", ""))
         if not sid:
             continue
-        start_at = _parse_date(subject.get("start_at"))
-        end_candidates: list[date] = []
-        for key in ("end_by", "selected_exam_date"):
-            parsed = _parse_date(subject.get(key))
+        exams: list[date] = []
+        selected = _parse_date(subject.get("selected_exam_date"))
+        if selected is not None:
+            exams.append(selected)
+        for raw in subject.get("exam_dates", []) if isinstance(subject.get("exam_dates"), list) else []:
+            parsed = _parse_date(raw)
             if parsed is not None:
-                end_candidates.append(parsed)
-        exam_dates = subject.get("exam_dates", [])
-        if isinstance(exam_dates, list):
-            for raw in exam_dates:
-                parsed = _parse_date(raw)
-                if parsed is not None:
-                    end_candidates.append(parsed)
-        windows[sid] = (start_at, min(end_candidates) if end_candidates else None)
+                exams.append(parsed)
+
+        end_by = _parse_date(subject.get("end_by"))
+        exam_date = min(exams) if exams else None
+        windows[sid] = {
+            "start_at": _parse_date(subject.get("start_at")),
+            "end_by": min([d for d in [end_by, exam_date] if d is not None], default=None),
+            "exam_date": exam_date,
+        }
     return windows
 
 
-def _is_locked_manual_or_past(
+def _is_immutable(
     allocation: dict[str, Any],
     *,
     locked_slot_ids: set[str],
     locked_dates: set[str],
-    from_date: date | None,
+    past_cutoff: date | None,
 ) -> bool:
     slot_id = str(allocation.get("slot_id", ""))
     alloc_date = str(allocation.get("date", ""))
     bucket = str(allocation.get("bucket", ""))
-
     if slot_id in locked_slot_ids or alloc_date in locked_dates:
         return True
     if bucket == "manual_locked" or slot_id.startswith("manual-"):
         return True
     if bool(allocation.get("locked_by_user", False) or allocation.get("pinned", False)):
         return True
-
-    parsed_date = _parse_date(alloc_date)
-    if from_date is not None and parsed_date is not None and parsed_date < from_date:
-        return True
-    return False
+    parsed = _parse_date(alloc_date)
+    return past_cutoff is not None and parsed is not None and parsed < past_cutoff
 
 
-def _compute_hard_violations(
-    allocations: list[dict[str, Any]],
-    *,
-    slots: list[dict[str, Any]],
-    subject_windows: dict[str, tuple[date | None, date | None]],
-) -> int:
-    violations = 0
-
-    allowed_by_day: dict[str, int] = {}
+def _allowed_by_day(slots: list[dict[str, Any]]) -> dict[str, int]:
+    allowed: dict[str, int] = defaultdict(int)
     for slot in slots:
         day = str(slot.get("date", ""))
         if not day:
             continue
         cap = max(0, int(slot.get("cap_minutes", 0) or 0))
         tol = max(0, int(slot.get("tolerance_minutes", 0) or 0))
-        allowed_by_day[day] = allowed_by_day.get(day, 0) + cap + tol
+        allowed[day] += cap + tol
+    return dict(allowed)
 
-    used_by_day: dict[str, int] = {}
+
+def _feasibility_score(
+    allocations: list[dict[str, Any]],
+    *,
+    allowed_minutes_by_day: dict[str, int],
+    subject_windows: dict[str, dict[str, date | None]],
+) -> float:
+    violations = 0
+    used_by_day: dict[str, int] = defaultdict(int)
+
     for alloc in allocations:
         sid = str(alloc.get("subject_id", ""))
-        if sid == "__slack__":
+        if sid in {"", "__slack__"}:
             continue
-        day = str(alloc.get("date", ""))
-        used_by_day[day] = used_by_day.get(day, 0) + max(0, int(alloc.get("minutes", 0) or 0))
-
-        alloc_day = _parse_date(day)
-        start_at, end_by = subject_windows.get(sid, (None, None))
+        day_str = str(alloc.get("date", ""))
+        used_by_day[day_str] += max(0, int(alloc.get("minutes", 0) or 0))
+        alloc_day = _parse_date(day_str)
+        window = subject_windows.get(sid, {})
+        start_at = window.get("start_at")
+        end_by = window.get("end_by")
+        exam_date = window.get("exam_date")
         if alloc_day is not None and start_at is not None and alloc_day < start_at:
             violations += 1
         if alloc_day is not None and end_by is not None and alloc_day > end_by:
             violations += 1
+        if alloc_day is not None and exam_date is not None and alloc_day > exam_date:
+            violations += 1
 
     for day, used in used_by_day.items():
-        if used > allowed_by_day.get(day, 0):
+        if used > allowed_minutes_by_day.get(day, 0):
             violations += 1
 
-    per_subject = sorted(
-        [a for a in allocations if str(a.get("subject_id", "")) not in {"", "__slack__"}],
-        key=lambda x: (str(x.get("subject_id", "")), str(x.get("date", "")), str(x.get("slot_id", ""))),
-    )
-    seen_buffer: set[str] = set()
-    for alloc in per_subject:
+    return 1.0 / (1.0 + float(violations))
+
+
+def _respects_max_subjects_per_day(allocations: list[dict[str, Any]], max_subjects_per_day: int) -> bool:
+    per_day_subjects: dict[str, set[str]] = defaultdict(set)
+    for alloc in allocations:
         sid = str(alloc.get("subject_id", ""))
-        bucket = str(alloc.get("bucket", ""))
-        if bucket == "buffer":
-            seen_buffer.add(sid)
-        if bucket == "base" and sid in seen_buffer:
-            violations += 1
-
-    return violations
+        if sid in {"", "__slack__"}:
+            continue
+        per_day_subjects[str(alloc.get("date", ""))].add(sid)
+    return all(len(subjects) <= max_subjects_per_day for subjects in per_day_subjects.values())
 
 
-def _humanity_improved(before: list[dict[str, Any]], after: list[dict[str, Any]]) -> bool:
-    before_m = compute_humanity_metrics(before)
-    after_m = compute_humanity_metrics(after)
-    mono_improved = float(after_m.get("mono_day_ratio", 1.0)) < float(before_m.get("mono_day_ratio", 1.0))
-    streak_improved = float(after_m.get("max_same_subject_streak_days", 10**9)) < float(
-        before_m.get("max_same_subject_streak_days", 10**9)
-    )
-    return mono_improved or streak_improved
+def _humanity_vector(allocations: list[dict[str, Any]]) -> dict[str, float]:
+    metrics = compute_humanity_metrics(allocations)
+    return {
+        "mono_day_ratio": float(metrics.get("mono_day_ratio", 1.0)),
+        "streak_days": float(metrics.get("max_same_subject_streak_days", 10**9)),
+        "subject_variety": float(metrics.get("subject_variety_index", 0.0)),
+    }
 
 
-def rebalance_plan(
+def _humanity_improves(before: dict[str, float], after: dict[str, float]) -> tuple[bool, str]:
+    improvements: list[str] = []
+    if after["mono_day_ratio"] < before["mono_day_ratio"]:
+        improvements.append("mono_day_ratio")
+    if after["streak_days"] < before["streak_days"]:
+        improvements.append("streak_days")
+    if after["subject_variety"] > before["subject_variety"]:
+        improvements.append("subject_variety")
+    return (len(improvements) > 0, ", ".join(improvements))
+
+
+
+
+def _strategy_mode_by_subject(
+    subjects: list[dict[str, Any]],
+    global_config: dict[str, Any],
+    config_by_subject: dict[str, dict[str, Any]] | None,
+) -> dict[str, str]:
+    default_mode = str(global_config.get("default_strategy_mode", "hybrid")).lower()
+    cfg = config_by_subject if isinstance(config_by_subject, dict) else {}
+    modes: dict[str, str] = {}
+    for subject in subjects:
+        sid = str(subject.get("subject_id", ""))
+        if not sid:
+            continue
+        subject_cfg = cfg.get(sid, {})
+        if not isinstance(subject_cfg, dict):
+            subject_cfg = {}
+        modes[sid] = str(subject_cfg.get("strategy_mode", default_mode)).lower()
+    return modes
+
+def rebalance_allocations(
+    *,
     allocations: list[dict[str, Any]],
     slots: list[dict[str, Any]],
-    workload: list[dict[str, Any]],
-    config: dict[str, Any],
-    locked_allocations: list[dict[str, Any]],
-    replan_window: Any,
-) -> dict[str, Any]:
-    """Deterministic local-swap rebalancing with feasibility preservation."""
+    subjects: list[dict[str, Any]],
+    global_config: dict[str, Any],
+    config_by_subject: dict[str, dict[str, Any]] | None = None,
+    decision_trace: Any | None = None,
+    past_cutoff: date | None = None,
+    max_swaps: int = 100,
+    near_days_window: int = 2,
+    feasibility_regression_tolerance: float = 0.0,
+    locked_allocations: list[dict[str, Any]] | None = None,
+) -> list[dict[str, Any]]:
+    """Rebalance using deterministic compatible swaps preserving feasibility."""
     working = [dict(item) for item in allocations]
     if len(working) < 2:
-        return {"allocations": working, "swaps": []}
+        return working
 
-    allow_fragmentation = bool(config.get("allow_session_fragmentation", False))
-    max_swaps = int(config.get("rebalance_max_swaps", 100) or 100)
-    near_days_window = int(config.get("rebalance_near_days_window", 2) or 2)
+    max_subjects_per_day = max(1, int(global_config.get("max_subjects_per_day", 10**9) or 10**9))
+    configured_max_swaps = int(global_config.get("rebalance_max_swaps", max_swaps) or max_swaps)
+    configured_max_iterations = int(global_config.get("rebalance_max_iterations", configured_max_swaps) or configured_max_swaps)
+    max_swaps = max(0, min(max_swaps, configured_max_swaps))
+    max_iterations = max(0, configured_max_iterations)
+    near_days_window = max(0, int(global_config.get("rebalance_near_days_window", near_days_window) or near_days_window))
 
-    locked_slot_ids = {str(item.get("slot_id", "")) for item in locked_allocations}
-    locked_dates = {str(item.get("date", "")) for item in locked_allocations if str(item.get("slot_id", "")).startswith("manual-")}
-    from_date = getattr(replan_window, "from_date", None)
-    subject_windows = _extract_subject_windows(workload)
+    locked = locked_allocations if isinstance(locked_allocations, list) else []
+    locked_slot_ids = {str(item.get("slot_id", "")) for item in locked}
+    locked_dates = {str(item.get("date", "")) for item in locked if str(item.get("slot_id", "")).startswith("manual-")}
+    windows = _subject_windows(subjects)
+    allowed = _allowed_by_day(slots)
+    strategy_modes = _strategy_mode_by_subject(subjects, global_config, config_by_subject)
 
-    accepted_swaps: list[dict[str, Any]] = []
     accepted = 0
-    while accepted < max_swaps:
-        base_violations = _compute_hard_violations(working, slots=slots, subject_windows=subject_windows)
+    iterations = 0
+    while accepted < max_swaps and iterations < max_iterations:
+        iterations += 1
+        base_feasibility = _feasibility_score(working, allowed_minutes_by_day=allowed, subject_windows=windows)
+        before_h = _humanity_vector(working)
 
         candidates: list[tuple[tuple[str, str, str, str, str, str], int, int]] = []
         for idx_a, alloc_a in enumerate(working):
             sid_a = str(alloc_a.get("subject_id", ""))
             if sid_a in {"", "__slack__"}:
                 continue
-            if _is_locked_manual_or_past(
-                alloc_a,
-                locked_slot_ids=locked_slot_ids,
-                locked_dates=locked_dates,
-                from_date=from_date,
-            ):
+            if _is_immutable(alloc_a, locked_slot_ids=locked_slot_ids, locked_dates=locked_dates, past_cutoff=past_cutoff):
                 continue
             day_a = _parse_date(alloc_a.get("date"))
             if day_a is None:
                 continue
-            minutes_a = max(0, int(alloc_a.get("minutes", 0) or 0))
-            if minutes_a <= 0:
-                continue
-
             for idx_b in range(idx_a + 1, len(working)):
                 alloc_b = working[idx_b]
                 sid_b = str(alloc_b.get("subject_id", ""))
-                if sid_b in {"", "__slack__"} or sid_b == sid_a:
+                if sid_b in {"", "__slack__"} or sid_a == sid_b:
                     continue
-                if _is_locked_manual_or_past(
-                    alloc_b,
-                    locked_slot_ids=locked_slot_ids,
-                    locked_dates=locked_dates,
-                    from_date=from_date,
-                ):
+                if strategy_modes.get(sid_a, "hybrid") != strategy_modes.get(sid_b, "hybrid"):
+                    continue
+                if _is_immutable(alloc_b, locked_slot_ids=locked_slot_ids, locked_dates=locked_dates, past_cutoff=past_cutoff):
                     continue
                 day_b = _parse_date(alloc_b.get("date"))
-                if day_b is None:
-                    continue
-                if abs((day_a - day_b).days) > near_days_window:
-                    continue
-                minutes_b = max(0, int(alloc_b.get("minutes", 0) or 0))
-                if minutes_b <= 0:
-                    continue
-                if not allow_fragmentation and minutes_a != minutes_b:
+                if day_b is None or abs((day_a - day_b).days) > near_days_window:
                     continue
                 if str(alloc_a.get("bucket", "")) != str(alloc_b.get("bucket", "")):
+                    continue
+
+                # Respect time windows and exam proximity after the swap.
+                a_on_b = windows.get(sid_a, {})
+                b_on_a = windows.get(sid_b, {})
+                if a_on_b.get("start_at") is not None and day_b < a_on_b["start_at"]:
+                    continue
+                if a_on_b.get("end_by") is not None and day_b > a_on_b["end_by"]:
+                    continue
+                if a_on_b.get("exam_date") is not None and day_b > a_on_b["exam_date"]:
+                    continue
+                if b_on_a.get("start_at") is not None and day_a < b_on_a["start_at"]:
+                    continue
+                if b_on_a.get("end_by") is not None and day_a > b_on_a["end_by"]:
+                    continue
+                if b_on_a.get("exam_date") is not None and day_a > b_on_a["exam_date"]:
                     continue
 
                 key = (
@@ -217,75 +261,46 @@ def rebalance_plan(
         improved = False
         for _, idx_a, idx_b in sorted(candidates, key=lambda x: x[0]):
             proposal = [dict(item) for item in working]
-            sid_a = str(proposal[idx_a].get("subject_id", ""))
-            sid_b = str(proposal[idx_b].get("subject_id", ""))
-            proposal[idx_a]["subject_id"] = sid_b
-            proposal[idx_b]["subject_id"] = sid_a
+            subject_a = str(proposal[idx_a].get("subject_id", ""))
+            subject_b = str(proposal[idx_b].get("subject_id", ""))
+            proposal[idx_a]["subject_id"] = subject_b
+            proposal[idx_b]["subject_id"] = subject_a
 
-            proposed_violations = _compute_hard_violations(proposal, slots=slots, subject_windows=subject_windows)
-            if proposed_violations > base_violations:
+            if not _respects_max_subjects_per_day(proposal, max_subjects_per_day=max_subjects_per_day):
                 continue
-            if not _humanity_improved(working, proposal):
+
+            proposal_feasibility = _feasibility_score(proposal, allowed_minutes_by_day=allowed, subject_windows=windows)
+            if proposal_feasibility + feasibility_regression_tolerance < base_feasibility:
+                continue
+
+            after_h = _humanity_vector(proposal)
+            improves, improved_metrics = _humanity_improves(before_h, after_h)
+            if not improves:
                 continue
 
             working = proposal
             accepted += 1
             improved = True
-            accepted_swaps.append(
-                {
-                    "slot_a": str(working[idx_a].get("slot_id", "")),
-                    "slot_b": str(working[idx_b].get("slot_id", "")),
-                    "subject_a": sid_a,
-                    "subject_b": sid_b,
-                }
-            )
+            if decision_trace is not None:
+                decision_trace.record(
+                    slot_id=f"{working[idx_a].get('slot_id', '')}|{working[idx_b].get('slot_id', '')}",
+                    candidate_subjects=[subject_a, subject_b],
+                    scores_by_subject={subject_a: 0.0, subject_b: 0.0},
+                    selected_subject_id=f"swap:{subject_a}<->{subject_b}",
+                    applied_rules=[RULE_REBALANCE_SWAP],
+                    blocked_constraints=[],
+                    tradeoff_note=(
+                        f"Swap accepted: improves {improved_metrics}; "
+                        f"feasibility {base_feasibility:.3f}->{proposal_feasibility:.3f}."
+                    ),
+                    confidence_impact=0.002 if proposal_feasibility == base_feasibility else 0.003,
+                )
             break
 
         if not improved:
             break
 
-    return {
-        "allocations": sorted(
-            working,
-            key=lambda item: (str(item.get("date", "")), str(item.get("slot_id", "")), str(item.get("subject_id", ""))),
-        ),
-        "swaps": accepted_swaps,
-    }
-
-
-def rebalance_allocations(
-    *,
-    allocations: list[dict[str, Any]],
-    slots: list[dict[str, Any]],
-    subjects: list[dict[str, Any]],
-    global_config: dict[str, Any],
-    config_by_subject: dict[str, dict[str, Any]] | None = None,
-    decision_trace: Any | None = None,
-    past_cutoff: date | None = None,
-    max_swaps: int = 100,
-    near_days_window: int = 2,
-    feasibility_regression_tolerance: int = 0,
-) -> list[dict[str, Any]]:
-    """Backward-compatible wrapper around rebalance_plan."""
-    del config_by_subject, feasibility_regression_tolerance
-    payload = rebalance_plan(
-        allocations=allocations,
-        slots=slots,
-        workload=subjects,
-        config={**global_config, "rebalance_max_swaps": max_swaps, "rebalance_near_days_window": near_days_window},
-        locked_allocations=[],
-        replan_window=type("Window", (), {"from_date": past_cutoff})(),
+    return sorted(
+        working,
+        key=lambda item: (str(item.get("date", "")), str(item.get("slot_id", "")), str(item.get("subject_id", ""))),
     )
-    if decision_trace is not None:
-        for swap in payload["swaps"]:
-            decision_trace.record(
-                slot_id=f"{swap['slot_a']}|{swap['slot_b']}",
-                candidate_subjects=[swap["subject_a"], swap["subject_b"]],
-                scores_by_subject={swap["subject_a"]: 0.0, swap["subject_b"]: 0.0},
-                selected_subject_id=f"swap:{swap['subject_a']}<->{swap['subject_b']}",
-                applied_rules=[RULE_REBALANCE_SWAP],
-                blocked_constraints=[],
-                tradeoff_note="Swap rebalancing accettato.",
-                confidence_impact=0.003,
-            )
-    return payload["allocations"]
