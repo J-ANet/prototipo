@@ -52,3 +52,26 @@ def test_rebalance_does_not_swap_when_it_would_break_deadline_or_locked_session(
     )
 
     assert rebalanced == allocations
+
+
+def test_rebalance_accepts_deterministic_fallback_swap_when_strict_humanity_improvement_missing() -> None:
+    allocations = [
+        {"slot_id": "slot-2026-01-01", "date": "2026-01-01", "subject_id": "math", "minutes": 60, "bucket": "base"},
+        {"slot_id": "slot-2026-01-02", "date": "2026-01-02", "subject_id": "physics", "minutes": 60, "bucket": "base"},
+    ]
+    trace = DecisionTraceCollector(start_timestamp=datetime.now(timezone.utc))
+
+    rebalanced = rebalance_allocations(
+        allocations=allocations,
+        slots=[],
+        subjects=[
+            {"subject_id": "math", "end_by": "2026-01-10", "exam_dates": ["2026-01-12"]},
+            {"subject_id": "physics", "end_by": "2026-01-10", "exam_dates": ["2026-01-12"]},
+        ],
+        global_config={"max_subjects_per_day": 3, "rebalance_max_swaps": 1},
+        decision_trace=trace,
+        near_days_window=5,
+    )
+
+    assert rebalanced != allocations
+    assert any("RULE_REBALANCE_FALLBACK_SWAP" in item["applied_rules"] for item in trace.as_list())
