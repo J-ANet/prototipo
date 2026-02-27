@@ -26,6 +26,17 @@ Soglie `abs(humanity_delta)` usate nell'audit smoke:
 | `off_monotone` | 0.5000 | 0.5000 |
 | `balanced_diffuse` | 1.0000 | 1.0000 |
 
+## Forward vs Backward
+
+Confronto `backward - forward` tra **balanced_diffuse** e **off_monotone**.
+
+| Metrica | Delta (backward-forward) | Interpretazione |
+| --- | ---: | --- |
+| `humanity_score` | +0.4077 | vantaggio backward |
+| `mono_day_ratio` | +0.5000 | vantaggio forward |
+| `max_streak_days` | -2.0000 | vantaggio backward |
+| `switch_rate` | +0.0561 | vantaggio backward |
+
 ## Stato finale
 - Acceptance status (`summary.status`): **pass**
 - Quality status (`summary.quality_status`): **fail**

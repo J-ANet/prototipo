@@ -90,7 +90,37 @@ def build_comparisons_report(scenarios: list[dict], thresholds: list[dict]) -> d
                 },
             }
         )
-    return {"opinion_thresholds": thresholds, "comparisons": comparison_items}
+    role_to_scenario = {
+        str(scenario.get("cross_scenario_role", "")): scenario
+        for scenario in scenarios
+        if scenario.get("cross_scenario_role") in {"forward", "backward"}
+    }
+    if "forward" not in role_to_scenario or "backward" not in role_to_scenario:
+        raise ValueError("Serve almeno una coppia forward/backward per calcolare le metriche cross_scenario")
+
+    forward_metrics = role_to_scenario["forward"]["post_rebalance"]["metrics"]
+    backward_metrics = role_to_scenario["backward"]["post_rebalance"]["metrics"]
+    cross_scenario = {
+        "forward_scenario": role_to_scenario["forward"]["scenario"],
+        "backward_scenario": role_to_scenario["backward"]["scenario"],
+        "backward_minus_forward_humanity_score": round(
+            float(backward_metrics["humanity_score"]) - float(forward_metrics["humanity_score"]),
+            4,
+        ),
+        "backward_minus_forward_mono_day_ratio": round(
+            float(backward_metrics["mono_day_ratio"]) - float(forward_metrics["mono_day_ratio"]),
+            4,
+        ),
+        "backward_minus_forward_max_streak_days": round(
+            float(backward_metrics["max_same_subject_streak_days"]) - float(forward_metrics["max_same_subject_streak_days"]),
+            4,
+        ),
+        "backward_minus_forward_switch_rate": round(
+            float(backward_metrics["switch_rate"]) - float(forward_metrics["switch_rate"]),
+            4,
+        ),
+    }
+    return {"opinion_thresholds": thresholds, "comparisons": comparison_items, "cross_scenario": cross_scenario}
 
 
 def _validate_comparisons_consistency(comparisons: dict) -> None:
@@ -127,6 +157,36 @@ def build_results_readme(report: dict, comparisons: dict) -> str:
         mono_rows.append(
             f"| `{item['scenario']}` | {item['mono_day_ratio']['pre']:.4f} | {item['mono_day_ratio']['post']:.4f} |"
         )
+    cross = comparisons["cross_scenario"]
+
+    def _delta_interpretation(delta: float, higher_is_better: bool) -> str:
+        if delta == 0:
+            return "parità"
+        better_for = "backward" if (delta > 0) == higher_is_better else "forward"
+        return f"vantaggio {better_for}"
+
+    cross_rows = [
+        (
+            "humanity_score",
+            float(cross["backward_minus_forward_humanity_score"]),
+            _delta_interpretation(float(cross["backward_minus_forward_humanity_score"]), higher_is_better=True),
+        ),
+        (
+            "mono_day_ratio",
+            float(cross["backward_minus_forward_mono_day_ratio"]),
+            _delta_interpretation(float(cross["backward_minus_forward_mono_day_ratio"]), higher_is_better=False),
+        ),
+        (
+            "max_streak_days",
+            float(cross["backward_minus_forward_max_streak_days"]),
+            _delta_interpretation(float(cross["backward_minus_forward_max_streak_days"]), higher_is_better=False),
+        ),
+        (
+            "switch_rate",
+            float(cross["backward_minus_forward_switch_rate"]),
+            _delta_interpretation(float(cross["backward_minus_forward_switch_rate"]), higher_is_better=True),
+        ),
+    ]
 
     return "\n".join(
         [
@@ -153,6 +213,14 @@ def build_results_readme(report: dict, comparisons: dict) -> str:
             "| Scenario | Mono ratio pre | Mono ratio post |",
             "| --- | ---: | ---: |",
             *mono_rows,
+            "",
+            "## Forward vs Backward",
+            "",
+            f"Confronto `backward - forward` tra **{cross['backward_scenario']}** e **{cross['forward_scenario']}**.",
+            "",
+            "| Metrica | Delta (backward-forward) | Interpretazione |",
+            "| --- | ---: | --- |",
+            *[f"| `{name}` | {delta:+.4f} | {interp} |" for name, delta, interp in cross_rows],
             "",
             "## Stato finale",
             f"- Acceptance status (`summary.status`): **{report['summary']['status']}**",
@@ -295,6 +363,7 @@ def _run_case(case: dict) -> dict:
 
     return {
         "scenario": case["name"],
+        "cross_scenario_role": case.get("cross_scenario_role"),
         "mode": case["global_config"].get("human_distribution_mode", "off"),
         "pre_rebalance": pre,
         "post_rebalance": post,
@@ -314,6 +383,7 @@ def main() -> None:
     cases = [
         {
             "name": "off_monotone",
+            "cross_scenario_role": "forward",
             "global_config": {
                 "schema_version": "1.0",
                 "daily_cap_minutes": 240,
@@ -356,6 +426,7 @@ def main() -> None:
         },
         {
             "name": "balanced_diffuse",
+            "cross_scenario_role": "backward",
             "global_config": {
                 "schema_version": "1.0",
                 "daily_cap_minutes": 240,

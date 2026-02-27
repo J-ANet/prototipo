@@ -2,6 +2,7 @@
   "scenarios": [
     {
       "scenario": "off_monotone",
+      "cross_scenario_role": "forward",
       "mode": "off",
       "pre_rebalance": {
         "rebalance_max_swaps": 0,
@@ -149,6 +150,7 @@
     },
     {
       "scenario": "balanced_diffuse",
+      "cross_scenario_role": "backward",
       "mode": "balanced",
       "pre_rebalance": {
         "rebalance_max_swaps": 0,

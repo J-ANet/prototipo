@@ -38,5 +38,13 @@
         "post": 1.0
       }
     }
-  ]
+  ],
+  "cross_scenario": {
+    "forward_scenario": "off_monotone",
+    "backward_scenario": "balanced_diffuse",
+    "backward_minus_forward_humanity_score": 0.4077,
+    "backward_minus_forward_mono_day_ratio": 0.5,
+    "backward_minus_forward_max_streak_days": -2.0,
+    "backward_minus_forward_switch_rate": 0.0561
+  }
 }

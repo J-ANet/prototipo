@@ -20,12 +20,29 @@ classify_humanity_delta = _generate_realistic_smoke.classify_humanity_delta
 _evaluate_metrics = _generate_realistic_smoke._evaluate_metrics
 
 
-def _scenario(name: str, delta: float) -> dict:
+def _scenario(
+    name: str,
+    delta: float,
+    *,
+    role: str,
+    post_humanity: float,
+    post_mono: float,
+    post_streak: float,
+    post_switch: float,
+) -> dict:
     return {
         "scenario": name,
+        "cross_scenario_role": role,
         "comparison": {"humanity_delta": delta},
         "pre_rebalance": {"metrics": {"mono_day_ratio": 1.0}},
-        "post_rebalance": {"metrics": {"mono_day_ratio": 0.5}},
+        "post_rebalance": {
+            "metrics": {
+                "humanity_score": post_humanity,
+                "mono_day_ratio": post_mono,
+                "max_same_subject_streak_days": post_streak,
+                "switch_rate": post_switch,
+            }
+        },
     }
 
 
@@ -49,13 +66,76 @@ def test_classify_humanity_delta_threshold_edges(delta: float, expected_label: s
 
 def test_build_comparisons_assigns_labels_from_thresholds() -> None:
     comparisons = build_comparisons_report(
-        [_scenario("delta_zero", 0.0), _scenario("delta_mid", 0.2), _scenario("delta_high", 0.45)],
+        [
+            _scenario(
+                "delta_zero",
+                0.0,
+                role="forward",
+                post_humanity=0.5,
+                post_mono=0.8,
+                post_streak=3,
+                post_switch=0.2,
+            ),
+            _scenario(
+                "delta_mid",
+                0.2,
+                role="backward",
+                post_humanity=0.6,
+                post_mono=0.7,
+                post_streak=2,
+                post_switch=0.25,
+            ),
+            _scenario(
+                "delta_high",
+                0.45,
+                role="neutral",
+                post_humanity=0.55,
+                post_mono=0.75,
+                post_streak=2,
+                post_switch=0.23,
+            ),
+        ],
         _build_opinion_thresholds(),
     )
 
     labels = [item["opinion"]["label"] for item in comparisons["comparisons"]]
     assert labels == ["marginale", "moderato", "forte"]
+    assert comparisons["cross_scenario"]["backward_minus_forward_humanity_score"] == 0.1
     _validate_comparisons_consistency(comparisons)
+
+
+def test_build_comparisons_report_adds_coherent_cross_scenario_block() -> None:
+    comparisons = build_comparisons_report(
+        [
+            _scenario(
+                "forward_case",
+                0.0,
+                role="forward",
+                post_humanity=0.51,
+                post_mono=0.82,
+                post_streak=3,
+                post_switch=0.11,
+            ),
+            _scenario(
+                "backward_case",
+                0.0,
+                role="backward",
+                post_humanity=0.63,
+                post_mono=0.76,
+                post_streak=2,
+                post_switch=0.17,
+            ),
+        ],
+        _build_opinion_thresholds(),
+    )
+
+    cross = comparisons["cross_scenario"]
+    assert cross["forward_scenario"] == "forward_case"
+    assert cross["backward_scenario"] == "backward_case"
+    assert cross["backward_minus_forward_humanity_score"] == 0.12
+    assert cross["backward_minus_forward_mono_day_ratio"] == -0.06
+    assert cross["backward_minus_forward_max_streak_days"] == -1.0
+    assert cross["backward_minus_forward_switch_rate"] == 0.06
 
 
 def test_format_opinion_line_keeps_delta_and_direction_coherent() -> None:
@@ -85,6 +165,14 @@ def test_validate_comparisons_fails_on_incoherent_label_delta() -> None:
                 "mono_day_ratio": {"pre": 1.0, "post": 0.8},
             }
         ],
+        "cross_scenario": {
+            "forward_scenario": "forward_case",
+            "backward_scenario": "backward_case",
+            "backward_minus_forward_humanity_score": 0.35,
+            "backward_minus_forward_mono_day_ratio": -0.2,
+            "backward_minus_forward_max_streak_days": 0.0,
+            "backward_minus_forward_switch_rate": 0.0,
+        },
     }
 
     with pytest.raises(ValueError, match="Incoerenza opinione/delta"):
@@ -132,6 +220,14 @@ def test_build_results_readme_mentions_double_gate_status() -> None:
     }
     comparisons = {
         "opinion_thresholds": _build_opinion_thresholds(),
+        "cross_scenario": {
+            "forward_scenario": "off_monotone",
+            "backward_scenario": "balanced_diffuse",
+            "backward_minus_forward_humanity_score": 0.16,
+            "backward_minus_forward_mono_day_ratio": -0.1,
+            "backward_minus_forward_max_streak_days": -1.0,
+            "backward_minus_forward_switch_rate": 0.03,
+        },
         "comparisons": [
             {
                 "scenario": "balanced_diffuse",
