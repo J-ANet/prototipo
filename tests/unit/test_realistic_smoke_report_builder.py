@@ -17,6 +17,7 @@ _format_opinion_line = _generate_realistic_smoke._format_opinion_line
 _validate_comparisons_consistency = _generate_realistic_smoke._validate_comparisons_consistency
 build_comparisons_report = _generate_realistic_smoke.build_comparisons_report
 classify_humanity_delta = _generate_realistic_smoke.classify_humanity_delta
+_evaluate_metrics = _generate_realistic_smoke._evaluate_metrics
 
 
 def _scenario(name: str, delta: float) -> dict:
@@ -88,3 +89,61 @@ def test_validate_comparisons_fails_on_incoherent_label_delta() -> None:
 
     with pytest.raises(ValueError, match="Incoerenza opinione/delta"):
         _validate_comparisons_consistency(comparisons)
+
+
+def test_evaluate_metrics_exposes_acceptance_and_quality_statuses() -> None:
+    case = {
+        "acceptance_min_humanity_score": 0.5,
+        "acceptance_max_mono_day_ratio": 0.9,
+        "acceptance_min_switch_rate": 0.1,
+        "acceptance_max_same_subject_streak_days_target": 3,
+        "acceptance_min_subject_variety_index": 0.5,
+        "quality_min_humanity_score": 0.65,
+        "quality_max_mono_day_ratio": 0.7,
+        "quality_min_switch_rate": 0.2,
+        "quality_max_same_subject_streak_days_target": 2,
+        "quality_min_subject_variety_index": 0.65,
+    }
+    metrics = {
+        "confidence_score": 0.9,
+        "humanity_score": 0.58,
+        "mono_day_ratio": 0.75,
+        "switch_rate": 0.15,
+        "max_same_subject_streak_days": 2,
+        "subject_variety_index": 0.55,
+    }
+
+    compact, checks = _evaluate_metrics(case, metrics)
+
+    assert compact["confidence_score"] == 0.9
+    assert checks["acceptance_checks"]["humanity_score"]["status"] == "pass"
+    assert checks["acceptance_checks"]["switch_rate"]["status"] == "pass"
+    assert checks["quality_checks"]["humanity_score"]["status"] == "fail"
+    assert checks["quality_checks"]["switch_rate"]["status"] == "fail"
+
+
+def test_build_results_readme_mentions_double_gate_status() -> None:
+    report = {
+        "summary": {
+            "status": "pass",
+            "quality_status": "fail",
+            "humanity_delta": 0.1234,
+        }
+    }
+    comparisons = {
+        "opinion_thresholds": _build_opinion_thresholds(),
+        "comparisons": [
+            {
+                "scenario": "balanced_diffuse",
+                "humanity_delta": 0.12,
+                "opinion": {"label": "moderato", "text": "unused"},
+                "mono_day_ratio": {"pre": 0.9, "post": 0.7},
+            }
+        ],
+    }
+
+    readme = _generate_realistic_smoke.build_results_readme(report, comparisons)
+
+    assert "Acceptance status (`summary.status`): **pass**" in readme
+    assert "Quality status (`summary.quality_status`): **fail**" in readme
+    assert "pass ma da migliorare" in readme
