@@ -26,6 +26,14 @@ def _build_opinion_thresholds() -> list[dict]:
     ]
 
 
+def _build_delta_language_rules() -> dict[str, str]:
+    return {
+        "positive": "miglioramento",
+        "negative": "peggioramento",
+        "neutral": "stabile",
+    }
+
+
 def _opinion_label_for_delta(delta: float, thresholds: list[dict]) -> str:
     abs_delta = abs(delta)
     for band in thresholds:
@@ -38,21 +46,37 @@ def classify_humanity_delta(delta: float) -> str:
     return _opinion_label_for_delta(delta, _build_opinion_thresholds())
 
 
-def _opinion_text(delta: float, label: str) -> str:
+def _delta_direction(delta: float) -> str:
     if delta > 0:
-        trend = "incremento"
-    elif delta < 0:
-        trend = "calo"
-    else:
-        trend = "stabile"
-    return f"Impatto {label} ({trend}) su humanity_score: Δ={delta:+.4f}."
+        return "positive"
+    if delta < 0:
+        return "negative"
+    return "neutral"
+
+
+def _opinion_text(delta: float, label: str) -> str:
+    direction = _delta_direction(delta)
+    trend = _build_delta_language_rules()[direction]
+    return f"Impatto {label}: {trend} su humanity_score (Δ={delta:+.4f})."
+
+
+def _opinion_payload(delta: float, thresholds: list[dict]) -> dict[str, str]:
+    label = _opinion_label_for_delta(delta, thresholds)
+    direction = _delta_direction(delta)
+    return {
+        "label": label,
+        "direction": direction,
+        "trend": _build_delta_language_rules()[direction],
+        "text": _opinion_text(delta, label),
+    }
 
 
 def _format_opinion_line(item: dict) -> str:
     delta = float(item["humanity_delta"])
-    label = str(item["opinion"]["label"])
-    direction = "incremento" if delta > 0 else "calo" if delta < 0 else "stabile"
-    return f"- **{item['scenario']}**: impatto **{label}** ({direction}) su humanity_score, con Δ={delta:+.4f}."
+    opinion = item["opinion"]
+    label = str(opinion["label"])
+    trend = str(opinion["trend"])
+    return f"- **{item['scenario']}**: impatto **{label}**, {trend} su humanity_score, con Δ={delta:+.4f}."
 
 
 def _format_threshold_lines(thresholds: list[dict]) -> list[str]:
@@ -75,15 +99,12 @@ def build_comparisons_report(scenarios: list[dict], thresholds: list[dict]) -> d
     comparison_items = []
     for scenario in scenarios:
         delta = float(scenario["comparison"]["humanity_delta"])
-        label = _opinion_label_for_delta(delta, thresholds)
+        opinion = _opinion_payload(delta, thresholds)
         comparison_items.append(
             {
                 "scenario": scenario["scenario"],
                 "humanity_delta": round(delta, 4),
-                "opinion": {
-                    "label": label,
-                    "text": _opinion_text(delta, label),
-                },
+                "opinion": opinion,
                 "mono_day_ratio": {
                     "pre": float(scenario["pre_rebalance"]["metrics"]["mono_day_ratio"]),
                     "post": float(scenario["post_rebalance"]["metrics"]["mono_day_ratio"]),
@@ -135,8 +156,10 @@ def _validate_comparisons_consistency(comparisons: dict) -> None:
         lower = upper
 
     for item in comparisons["comparisons"]:
-        delta = abs(float(item["humanity_delta"]))
-        label = str(item["opinion"]["label"])
+        raw_delta = float(item["humanity_delta"])
+        delta = abs(raw_delta)
+        opinion = item["opinion"]
+        label = str(opinion["label"])
         if label not in bounds:
             raise ValueError(f"Opinion label non riconosciuta: {label}")
         lower_bound, upper_bound = bounds[label]
@@ -145,6 +168,25 @@ def _validate_comparisons_consistency(comparisons: dict) -> None:
                 "Incoerenza opinione/delta per "
                 f"{item['scenario']}: label={label}, delta={delta:.4f}, "
                 f"atteso in [{lower_bound:.4f}, {upper_bound:.4f}]"
+            )
+
+        expected_direction = _delta_direction(raw_delta)
+        expected_trend = _build_delta_language_rules()[expected_direction]
+        if str(opinion.get("direction", "")) != expected_direction:
+            raise ValueError(
+                f"Incoerenza direction/delta per {item['scenario']}: "
+                f"direction={opinion.get('direction')}, atteso={expected_direction}"
+            )
+        if str(opinion.get("trend", "")) != expected_trend:
+            raise ValueError(
+                f"Incoerenza trend/delta per {item['scenario']}: "
+                f"trend={opinion.get('trend')}, atteso={expected_trend}"
+            )
+        expected_text = _opinion_text(raw_delta, label)
+        if str(opinion.get("text", "")) != expected_text:
+            raise ValueError(
+                f"Incoerenza testo/delta per {item['scenario']}: "
+                f"text={opinion.get('text')!r}, atteso={expected_text!r}"
             )
 
 
@@ -188,6 +230,21 @@ def build_results_readme(report: dict, comparisons: dict) -> str:
         ),
     ]
 
+    scenario_rows = report.get("scenarios", [])
+    no_accepted_swaps = bool(scenario_rows) and all(
+        int(item["post_rebalance"].get("accepted_swaps", 0)) == 0 for item in scenario_rows
+    )
+    limitations_section = (
+        [
+            "",
+            "## Limitazioni del run",
+            "- `accepted_swaps == 0` in tutti gli scenari: il rebalance non ha applicato swap accettati.",
+            "- Le variazioni osservate riflettono solo il piano iniziale e i vincoli correnti, senza correzioni da swap.",
+        ]
+        if no_accepted_swaps
+        else []
+    )
+
     return "\n".join(
         [
             "# Realistic smoke results",
@@ -221,6 +278,7 @@ def build_results_readme(report: dict, comparisons: dict) -> str:
             "| Metrica | Delta (backward-forward) | Interpretazione |",
             "| --- | ---: | --- |",
             *[f"| `{name}` | {delta:+.4f} | {interp} |" for name, delta, interp in cross_rows],
+            *limitations_section,
             "",
             "## Stato finale",
             f"- Acceptance status (`summary.status`): **{report['summary']['status']}**",
