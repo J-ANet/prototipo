@@ -110,6 +110,30 @@
           },
           "confidence_impact": {
             "type": "number"
+          },
+          "allocation_metadata": {
+            "type": "object",
+            "properties": {
+              "phase": {
+                "type": "string"
+              },
+              "strategy_mode": {
+                "type": "string"
+              },
+              "strategy_mode_source": {
+                "type": "string"
+              },
+              "concentration_mode": {
+                "type": "string"
+              },
+              "concentration_resolution": {
+                "type": "string"
+              },
+              "concentration_origin": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
           }
         },
         "additionalProperties": false
