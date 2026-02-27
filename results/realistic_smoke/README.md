@@ -11,13 +11,13 @@ Questo report espone **confidence** e **qualità umana** del piano.
 
 ## Opinione (data-driven da `comparisons.json`)
 
-Soglie `abs(humanity_delta)`:
-- `marginale`: `<= 0.1499`
-- `moderato`: `0.1500 - 0.2999`
-- `forte`: `>= 0.3000`
+Soglie `abs(humanity_delta)` usate nell'audit smoke:
+- `marginale`: `abs(delta) < 0.1000`
+- `moderato`: `0.1000 <= abs(delta) < 0.3000`
+- `forte`: `abs(delta) >= 0.3000`
 
-- **off_monotone**: Impatto marginale (stabile) su humanity_score: Δ=+0.0000.
-- **balanced_diffuse**: Impatto marginale (stabile) su humanity_score: Δ=+0.0000.
+- **off_monotone**: impatto **marginale** (stabile) su humanity_score, con Δ=+0.0000.
+- **balanced_diffuse**: impatto **marginale** (stabile) su humanity_score, con Δ=+0.0000.
 
 ## Mini-tabella verificabilità (mono_day_ratio)
 
@@ -27,8 +27,15 @@ Soglie `abs(humanity_delta)`:
 | `balanced_diffuse` | 1.0000 | 1.0000 |
 
 ## Stato finale
-- Summary status: **pass**
+- Acceptance status (`summary.status`): **pass**
+- Quality status (`summary.quality_status`): **fail**
 - Humanity delta aggregato: `+0.0000`
+- Interpretazione: se acceptance è `pass` ma quality è `fail`, il piano è **pass ma da migliorare**.
+
+## Gate di valutazione
+- `acceptance_checks`: requisito minimo di fattibilità (usato per lo stato ufficiale).
+- `quality_checks`: target qualitativo più severo, utile per evidenziare margini di miglioramento.
+- Il report globale resta basato su acceptance (`summary.status`) e aggiunge `summary.quality_status`.
 
 ## Come rigenerare
 ```bash

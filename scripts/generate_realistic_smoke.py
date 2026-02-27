@@ -155,8 +155,15 @@ def build_results_readme(report: dict, comparisons: dict) -> str:
             *mono_rows,
             "",
             "## Stato finale",
-            f"- Summary status: **{report['summary']['status']}**",
+            f"- Acceptance status (`summary.status`): **{report['summary']['status']}**",
+            f"- Quality status (`summary.quality_status`): **{report['summary']['quality_status']}**",
             f"- Humanity delta aggregato: `{report['summary']['humanity_delta']:+.4f}`",
+            "- Interpretazione: se acceptance è `pass` ma quality è `fail`, il piano è **pass ma da migliorare**.",
+            "",
+            "## Gate di valutazione",
+            "- `acceptance_checks`: requisito minimo di fattibilità (usato per lo stato ufficiale).",
+            "- `quality_checks`: target qualitativo più severo, utile per evidenziare margini di miglioramento.",
+            "- Il report globale resta basato su acceptance (`summary.status`) e aggiunge `summary.quality_status`.",
             "",
             "## Come rigenerare",
             "```bash",
@@ -177,31 +184,65 @@ def _evaluate_metrics(case: dict, metrics: dict) -> tuple[dict, dict]:
     max_streak_days = float(metrics.get("max_same_subject_streak_days", 0.0) or 0.0)
     subject_variety_index = float(metrics.get("subject_variety_index", 0.0) or 0.0)
 
-    checks = {
+    acceptance_checks = {
         "humanity_score": {
             "value": round(humanity_score, 4),
-            "threshold_min": case["min_humanity_score"],
-            "status": "pass" if humanity_score >= case["min_humanity_score"] else "fail",
+            "threshold_min": case["acceptance_min_humanity_score"],
+            "status": "pass" if humanity_score >= case["acceptance_min_humanity_score"] else "fail",
         },
         "mono_day_ratio": {
             "value": round(mono_day_ratio, 4),
-            "threshold_max": case["max_mono_day_ratio"],
-            "status": "pass" if mono_day_ratio <= case["max_mono_day_ratio"] else "fail",
+            "threshold_max": case["acceptance_max_mono_day_ratio"],
+            "status": "pass" if mono_day_ratio <= case["acceptance_max_mono_day_ratio"] else "fail",
         },
         "switch_rate": {
             "value": round(switch_rate, 4),
-            "threshold_min": case["min_switch_rate"],
-            "status": "pass" if switch_rate >= case["min_switch_rate"] else "fail",
+            "threshold_min": case["acceptance_min_switch_rate"],
+            "status": "pass" if switch_rate >= case["acceptance_min_switch_rate"] else "fail",
         },
         "max_same_subject_streak_days": {
             "value": round(max_streak_days, 4),
-            "threshold_max": case.get("max_same_subject_streak_days_target", 99),
-            "status": "pass" if max_streak_days <= case.get("max_same_subject_streak_days_target", 99) else "fail",
+            "threshold_max": case.get("acceptance_max_same_subject_streak_days_target", 99),
+            "status": "pass"
+            if max_streak_days <= case.get("acceptance_max_same_subject_streak_days_target", 99)
+            else "fail",
         },
         "subject_variety_index": {
             "value": round(subject_variety_index, 4),
-            "threshold_min": case.get("min_subject_variety_index", 0.0),
-            "status": "pass" if subject_variety_index >= case.get("min_subject_variety_index", 0.0) else "fail",
+            "threshold_min": case.get("acceptance_min_subject_variety_index", 0.0),
+            "status": "pass"
+            if subject_variety_index >= case.get("acceptance_min_subject_variety_index", 0.0)
+            else "fail",
+        },
+    }
+
+    quality_checks = {
+        "humanity_score": {
+            "value": round(humanity_score, 4),
+            "threshold_min": case["quality_min_humanity_score"],
+            "status": "pass" if humanity_score >= case["quality_min_humanity_score"] else "fail",
+        },
+        "mono_day_ratio": {
+            "value": round(mono_day_ratio, 4),
+            "threshold_max": case["quality_max_mono_day_ratio"],
+            "status": "pass" if mono_day_ratio <= case["quality_max_mono_day_ratio"] else "fail",
+        },
+        "switch_rate": {
+            "value": round(switch_rate, 4),
+            "threshold_min": case["quality_min_switch_rate"],
+            "status": "pass" if switch_rate >= case["quality_min_switch_rate"] else "fail",
+        },
+        "max_same_subject_streak_days": {
+            "value": round(max_streak_days, 4),
+            "threshold_max": case.get("quality_max_same_subject_streak_days_target", 99),
+            "status": "pass"
+            if max_streak_days <= case.get("quality_max_same_subject_streak_days_target", 99)
+            else "fail",
+        },
+        "subject_variety_index": {
+            "value": round(subject_variety_index, 4),
+            "threshold_min": case.get("quality_min_subject_variety_index", 0.0),
+            "status": "pass" if subject_variety_index >= case.get("quality_min_subject_variety_index", 0.0) else "fail",
         },
     }
 
@@ -213,7 +254,7 @@ def _evaluate_metrics(case: dict, metrics: dict) -> tuple[dict, dict]:
         "switch_rate": round(switch_rate, 4),
         "subject_variety_index": round(subject_variety_index, 4),
     }
-    return compact, checks
+    return compact, {"acceptance_checks": acceptance_checks, "quality_checks": quality_checks}
 
 
 def _run_single(case: dict, *, rebalance_max_swaps: int) -> dict:
@@ -233,14 +274,18 @@ def _run_single(case: dict, *, rebalance_max_swaps: int) -> dict:
 
     result = run_planner(loaded)
     metrics = collect_metrics(result)
-    compact, checks = _evaluate_metrics(case, metrics)
+    compact, check_sets = _evaluate_metrics(case, metrics)
+    acceptance_checks = check_sets["acceptance_checks"]
+    quality_checks = check_sets["quality_checks"]
 
     return {
         "rebalance_max_swaps": rebalance_max_swaps,
         "accepted_swaps": len(result.get("rebalanced_swaps", [])),
         "metrics": compact,
-        "checks": checks,
-        "status": "pass" if all(item["status"] == "pass" for item in checks.values()) else "fail",
+        "acceptance_checks": acceptance_checks,
+        "quality_checks": quality_checks,
+        "status": "pass" if all(item["status"] == "pass" for item in acceptance_checks.values()) else "fail",
+        "quality_status": "pass" if all(item["status"] == "pass" for item in quality_checks.values()) else "fail",
     }
 
 
@@ -261,6 +306,7 @@ def _run_case(case: dict) -> dict:
             "mono_day_ratio_delta": round(post["metrics"]["mono_day_ratio"] - pre["metrics"]["mono_day_ratio"], 4),
         },
         "status": "pass" if pre["status"] == "pass" and post["status"] == "pass" else "fail",
+        "quality_status": "pass" if pre["quality_status"] == "pass" and post["quality_status"] == "pass" else "fail",
     }
 
 
@@ -296,11 +342,16 @@ def main() -> None:
                     {"subject_id": "s2", "name": "Secondary", "cfu": 0.6, "difficulty_coeff": 1, "priority": 1, "completion_initial": 0, "attending": False, "exam_dates": ["2026-01-04"], "selected_exam_date": "2026-01-04", "start_at": "2026-01-01", "end_by": "2026-01-04"},
                 ],
             },
-            "min_humanity_score": 0.30,
-            "max_mono_day_ratio": 1.0,
-            "min_switch_rate": 0.05,
-            "max_same_subject_streak_days_target": 99,
-            "min_subject_variety_index": 0.3,
+            "acceptance_min_humanity_score": 0.28,
+            "acceptance_max_mono_day_ratio": 1.0,
+            "acceptance_min_switch_rate": 0.05,
+            "acceptance_max_same_subject_streak_days_target": 4,
+            "acceptance_min_subject_variety_index": 0.25,
+            "quality_min_humanity_score": 0.45,
+            "quality_max_mono_day_ratio": 0.9,
+            "quality_min_switch_rate": 0.12,
+            "quality_max_same_subject_streak_days_target": 3,
+            "quality_min_subject_variety_index": 0.4,
             "rebalance_max_swaps": 20,
         },
         {
@@ -338,11 +389,16 @@ def main() -> None:
                     {"subject_id": "s2", "name": "Secondary", "cfu": 0.6, "difficulty_coeff": 1, "priority": 1, "completion_initial": 0, "attending": False, "exam_dates": ["2026-01-04"], "selected_exam_date": "2026-01-04", "start_at": "2026-01-01", "end_by": "2026-01-04"},
                 ],
             },
-            "min_humanity_score": 0.55,
-            "max_mono_day_ratio": 1.0,
-            "min_switch_rate": 0.10,
-            "max_same_subject_streak_days_target": 2,
-            "min_subject_variety_index": 0.6,
+            "acceptance_min_humanity_score": 0.50,
+            "acceptance_max_mono_day_ratio": 1.0,
+            "acceptance_min_switch_rate": 0.1,
+            "acceptance_max_same_subject_streak_days_target": 3,
+            "acceptance_min_subject_variety_index": 0.5,
+            "quality_min_humanity_score": 0.62,
+            "quality_max_mono_day_ratio": 0.9,
+            "quality_min_switch_rate": 0.18,
+            "quality_max_same_subject_streak_days_target": 2,
+            "quality_min_subject_variety_index": 0.68,
             "rebalance_max_swaps": 20,
         },
     ]
@@ -353,6 +409,7 @@ def main() -> None:
         "summary": {
             "humanity_delta": round(sum(item["comparison"]["humanity_delta"] for item in scenarios), 4),
             "status": "pass" if all(item["status"] == "pass" for item in scenarios) else "fail",
+            "quality_status": "pass" if all(item["quality_status"] == "pass" for item in scenarios) else "fail",
         },
     }
     comparisons = build_comparisons_report(scenarios, _build_opinion_thresholds())

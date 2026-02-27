@@ -2,11 +2,11 @@
   "opinion_thresholds": [
     {
       "label": "marginale",
-      "max_abs_delta": 0.1499
+      "max_abs_delta": 0.1
     },
     {
       "label": "moderato",
-      "max_abs_delta": 0.2999
+      "max_abs_delta": 0.3
     },
     {
       "label": "forte",
