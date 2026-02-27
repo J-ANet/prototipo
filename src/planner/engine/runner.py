@@ -190,6 +190,7 @@ def run_planner(payload: dict[str, Any]) -> dict[str, Any]:
         remaining_base_minutes=allocation_result["remaining_base_minutes"],
         remaining_buffer_minutes=allocation_result["remaining_buffer_minutes"],
         humanity_score=humanity_metrics["humanity_score"],
+        humanity_threshold=float(global_config.get("humanity_warning_threshold", 0.45) or 0.45),
     )
     warnings.extend(build_critical_warnings(manual_sessions=manual_sessions, slots_in_window=constrained_slots))
 
@@ -206,7 +207,8 @@ def run_planner(payload: dict[str, Any]) -> dict[str, Any]:
 
     total_planned_minutes = sum(int(item.get("minutes", 0) or 0) for item in final_plan if item.get("subject_id") != "__slack__")
     humanity_tip = ""
-    if humanity_metrics["humanity_score"] < 0.45:
+    humanity_threshold = float(global_config.get("humanity_warning_threshold", 0.45) or 0.45)
+    if humanity_metrics["humanity_score"] < humanity_threshold:
         humanity_tip = "Anticipa 1-2 blocchi di materia secondaria nei giorni più concentrati."
 
     return {

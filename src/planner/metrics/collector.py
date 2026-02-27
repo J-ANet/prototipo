@@ -29,6 +29,9 @@ def compute_humanity_metrics(allocations: list[dict[str, Any]]) -> dict[str, flo
             "subject_switching_score": 1.0,
             "streak_burden_score": 1.0,
             "daily_monotony_score": 1.0,
+            "mono_day_ratio": 0.0,
+            "max_same_subject_streak_days": 0.0,
+            "switch_rate": 0.0,
             "humanity_score": 1.0,
         }
 
@@ -69,17 +72,22 @@ def compute_humanity_metrics(allocations: list[dict[str, Any]]) -> dict[str, flo
                 current = 1
         return best
 
+    max_same_subject_streak = max((_max_streak(subject_days) for subject_days in days_by_subject.values()), default=0)
     streak_penalties = [max(0, _max_streak(subject_days) - 2) for subject_days in days_by_subject.values()]
     active_days = max(1, len(day_subject_totals))
     streak_burden = sum(penalty * penalty for penalty in streak_penalties)
     streak_burden_score = _clamp01(1.0 - min(1.0, streak_burden / max(1, active_days * 2)))
 
     monotony_penalty = []
+    mono_days = 0
     for subject_totals in day_subject_totals.values():
         day_total = max(1, sum(subject_totals.values()))
         dominant_share = max(subject_totals.values()) / day_total
         monotony_penalty.append(max(0.0, (dominant_share - 0.55) / 0.45))
+        if dominant_share >= 0.80:
+            mono_days += 1
     daily_monotony_score = _clamp01(1.0 - mean(monotony_penalty))
+    mono_day_ratio = mono_days / max(1, len(day_subject_totals))
 
     humanity_score = _clamp01(
         (0.40 * subject_switching_score)
@@ -91,6 +99,9 @@ def compute_humanity_metrics(allocations: list[dict[str, Any]]) -> dict[str, flo
         "subject_switching_score": subject_switching_score,
         "streak_burden_score": streak_burden_score,
         "daily_monotony_score": daily_monotony_score,
+        "mono_day_ratio": _clamp01(mono_day_ratio),
+        "max_same_subject_streak_days": float(max_same_subject_streak),
+        "switch_rate": _clamp01(switch_ratio),
         "humanity_score": humanity_score,
     }
 
@@ -270,6 +281,9 @@ def collect_metrics(result: dict[str, Any]) -> dict[str, Any]:
         "subject_switching_score": humanity_metrics["subject_switching_score"],
         "streak_burden_score": humanity_metrics["streak_burden_score"],
         "daily_monotony_score": humanity_metrics["daily_monotony_score"],
+        "mono_day_ratio": humanity_metrics["mono_day_ratio"],
+        "max_same_subject_streak_days": humanity_metrics["max_same_subject_streak_days"],
+        "switch_rate": humanity_metrics["switch_rate"],
         "humanity_score": humanity_metrics["humanity_score"],
         "confidence_score": confidence_score,
         "confidence_level": _confidence_level(confidence_score),

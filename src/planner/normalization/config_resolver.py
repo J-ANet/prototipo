@@ -25,6 +25,7 @@ DEFAULT_GLOBAL_CONFIG: dict[str, Any] = {
     "max_same_subject_consecutive_blocks": 3,
     "target_daily_subject_variety": 2,
     "concentration_mode": "diffuse",
+    "humanity_warning_threshold": 0.45,
 }
 
 _ALLOWED_OVERRIDE_KEYS = {

@@ -1,0 +1,72 @@
+{
+  "scenarios": [
+    {
+      "scenario": "off_monotone",
+      "mode": "off",
+      "metrics": {
+        "confidence_score": 0.4681,
+        "humanity_score": 0.5224,
+        "mono_day_ratio": 0.5,
+        "max_same_subject_streak_days": 3.0,
+        "switch_rate": 0.1613
+      },
+      "checks": {
+        "exit_code": {
+          "value": 0,
+          "expected": 0,
+          "status": "pass"
+        },
+        "humanity_score": {
+          "value": 0.5224,
+          "threshold_min": 0.3,
+          "status": "pass"
+        },
+        "mono_day_ratio": {
+          "value": 0.5,
+          "threshold_max": 1.0,
+          "status": "pass"
+        },
+        "switch_rate": {
+          "value": 0.1613,
+          "threshold_min": 0.05,
+          "status": "pass"
+        }
+      },
+      "status": "pass"
+    },
+    {
+      "scenario": "balanced_diffuse",
+      "mode": "balanced",
+      "metrics": {
+        "confidence_score": 0.4558,
+        "humanity_score": 0.7301,
+        "mono_day_ratio": 1.0,
+        "max_same_subject_streak_days": 2.0,
+        "switch_rate": 0.2174
+      },
+      "checks": {
+        "exit_code": {
+          "value": 0,
+          "expected": 0,
+          "status": "pass"
+        },
+        "humanity_score": {
+          "value": 0.7301,
+          "threshold_min": 0.55,
+          "status": "pass"
+        },
+        "mono_day_ratio": {
+          "value": 1.0,
+          "threshold_max": 1.0,
+          "status": "pass"
+        },
+        "switch_rate": {
+          "value": 0.2174,
+          "threshold_min": 0.1,
+          "status": "pass"
+        }
+      },
+      "status": "pass"
+    }
+  ]
+}
